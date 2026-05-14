@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from project_agent import events as events_api
-from project_agent import llm, projects, warehouse
+from project_agent import llm, projects, render, warehouse
 from project_agent.ingest import inbox
 from project_agent.schemas import (
     ActionAddedPayload,
@@ -418,3 +418,37 @@ def run_analyze(
         duration_ms=elapsed,
         counts={"signals_new": signals_new, "signals_skipped": signals_skipped, "errors": errors},
     ), emitted
+
+
+# ---------------------------------------------------------------------------
+# Stage 5 — Render
+# ---------------------------------------------------------------------------
+
+def run_render(
+    project_id: str,
+    project_dir: Path,
+    signals: list[Signal],
+    run_id: str,
+) -> StageResult:
+    """Stage 5 — render MD status report (PRD §8.5, MVP)."""
+    start = time.monotonic()
+    try:
+        report_path = render.render_status(project_dir, signals, run_id)
+        logger.info("Render complete: %s", report_path)
+    except Exception:
+        logger.exception("Render stage failed")
+        elapsed = int((time.monotonic() - start) * 1000)
+        return StageResult(
+            name="render",
+            status="error",
+            duration_ms=elapsed,
+            counts={"reports_written": 0, "errors": 1},
+            error="See logs for details",
+        )
+    elapsed = int((time.monotonic() - start) * 1000)
+    return StageResult(
+        name="render",
+        status="ok",
+        duration_ms=elapsed,
+        counts={"reports_written": 1, "errors": 0},
+    )
