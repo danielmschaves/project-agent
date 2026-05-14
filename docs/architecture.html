@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Agent — Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,600&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.4.0/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg-deep: #08090f;
+    --bg-surface: #11131c;
+    --bg-elevated: #1a1d2a;
+    --bg-panel: #14171f;
+    --border: rgba(232, 227, 211, 0.08);
+    --border-bright: rgba(94, 234, 212, 0.25);
+    --border-strong: rgba(94, 234, 212, 0.5);
+    --text-primary: #e8e3d3;
+    --text-secondary: #a8b0bf;
+    --text-muted: #6b7280;
+    --text-faint: #3f4654;
+    --accent-cyan: #5eead4;
+    --accent-amber: #fbbf24;
+    --accent-coral: #f87171;
+    --accent-sage: #86efac;
+    --accent-sky: #7dd3fc;
+    --shadow-deep: 0 20px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    font-weight: 400;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(94, 234, 212, 0.04) 0%, transparent 50%),
+      radial-gradient(circle at 80% 100%, rgba(251, 191, 36, 0.03) 0%, transparent 50%),
+      linear-gradient(var(--bg-deep), var(--bg-deep));
+    background-attachment: fixed;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(232, 227, 211, 0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232, 227, 211, 0.015) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    max-width: 1280px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* === MASTHEAD === */
+  .masthead {
+    grid-column: 1 / -1;
+    padding: 48px 56px 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+
+  .masthead-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-muted);
+    margin-bottom: 24px;
+  }
+
+  .masthead-meta .dot {
+    color: var(--accent-cyan);
+    font-size: 10px;
+    margin: 0 8px;
+  }
+
+  .masthead-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: clamp(40px, 6vw, 72px);
+    line-height: 1.0;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+  }
+
+  .masthead-title em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--accent-cyan);
+  }
+
+  .masthead-sub {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 18px;
+    color: var(--text-secondary);
+    max-width: 720px;
+    line-height: 1.5;
+  }
+
+  .masthead-rule {
+    margin-top: 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+  }
+
+  .masthead-rule::before, .masthead-rule::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* === TOC === */
+  .toc {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    padding: 0 24px 0 56px;
+    height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+
+  .toc-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--text-faint);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .toc-list { list-style: none; }
+
+  .toc-item {
+    margin-bottom: 4px;
+  }
+
+  .toc-link {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 12px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 1.4;
+    border-left: 2px solid transparent;
+    transition: all 0.2s ease;
+  }
+
+  .toc-link:hover {
+    color: var(--text-primary);
+    border-left-color: var(--text-faint);
+    background: rgba(232, 227, 211, 0.02);
+  }
+
+  .toc-link.active {
+    color: var(--accent-cyan);
+    border-left-color: var(--accent-cyan);
+    background: rgba(94, 234, 212, 0.04);
+  }
+
+  .toc-num {
+    font-size: 11px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+    font-feature-settings: "tnum";
+  }
+
+  .toc-link.active .toc-num {
+    color: var(--accent-cyan);
+  }
+
+  /* === MAIN === */
+  .main {
+    padding: 0 56px 96px;
+    min-width: 0;
+  }
+
+  .panel {
+    margin-bottom: 96px;
+    scroll-margin-top: 24px;
+  }
+
+  .panel-header {
+    margin-bottom: 32px;
+    position: relative;
+    padding-left: 0;
+  }
+
+  .panel-num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 64px;
+    line-height: 1;
+    color: var(--accent-cyan);
+    opacity: 0.6;
+    display: block;
+    margin-bottom: 4px;
+    letter-spacing: -0.04em;
+  }
+
+  .panel-num-suffix {
+    color: var(--text-faint);
+    font-size: 32px;
+    margin-left: 4px;
+  }
+
+  .panel-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: clamp(28px, 4vw, 40px);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+  }
+
+  .panel-title em {
+    font-style: italic;
+    color: var(--accent-cyan);
+  }
+
+  .panel-subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-muted);
+  }
+
+  .panel-intro {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 17px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    max-width: 680px;
+    margin-bottom: 28px;
+  }
+
+  .panel-intro em {
+    font-style: italic;
+    color: var(--text-primary);
+  }
+
+  /* === DIAGRAM STAGE === */
+  .stage {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 32px;
+    overflow-x: auto;
+    box-shadow: var(--shadow-deep);
+    position: relative;
+  }
+
+  .stage::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+    opacity: 0.4;
+  }
+
+  .stage-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed var(--border);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+  }
+
+  .stage-meta .stage-id {
+    color: var(--accent-cyan);
+  }
+
+  .mermaid {
+    text-align: center;
+    min-height: 200px;
+  }
+
+  /* === CAPTION === */
+  .caption {
+    margin-top: 28px;
+    padding: 20px 24px;
+    border-left: 2px solid var(--accent-cyan);
+    background: rgba(94, 234, 212, 0.025);
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    max-width: 800px;
+  }
+
+  .caption strong {
+    font-style: normal;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+  }
+
+  /* === FOOTER === */
+  .footer {
+    grid-column: 1 / -1;
+    margin-top: 48px;
+    padding: 32px 56px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-faint);
+  }
+
+  .footer a {
+    color: var(--text-muted);
+    text-decoration: none;
+    border-bottom: 1px dashed transparent;
+    transition: all 0.2s;
+  }
+
+  .footer a:hover {
+    color: var(--accent-cyan);
+    border-bottom-color: var(--accent-cyan);
+  }
+
+  /* === RESPONSIVE === */
+  @media (max-width: 900px) {
+    .layout {
+      grid-template-columns: 1fr;
+    }
+    .masthead { padding: 32px 24px 24px; }
+    .toc {
+      position: static;
+      height: auto;
+      padding: 0 24px;
+      margin-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+    }
+    .toc-list {
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+    .toc-item { flex-shrink: 0; }
+    .toc-link {
+      border-left: none;
+      border-bottom: 2px solid transparent;
+      padding: 8px 12px;
+    }
+    .toc-link.active {
+      border-left: none;
+      border-bottom-color: var(--accent-cyan);
+    }
+    .main { padding: 0 24px 64px; }
+    .panel { margin-bottom: 64px; }
+    .stage { padding: 16px; }
+    .footer { padding: 24px; }
+  }
+
+  /* === MERMAID NODE OVERRIDES === */
+  /* Improve text contrast inside Mermaid diagrams */
+  .mermaid .nodeLabel,
+  .mermaid .label,
+  .mermaid .edgeLabel {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important;
+  }
+
+  .mermaid .cluster rect {
+    fill: rgba(94, 234, 212, 0.03) !important;
+    stroke: rgba(94, 234, 212, 0.2) !important;
+    stroke-dasharray: 4 4;
+  }
+
+  .mermaid .cluster .cluster-label .nodeLabel {
+    color: var(--accent-cyan) !important;
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <header class="masthead">
+    <div class="masthead-meta">
+      <span><span class="dot">●</span> PROJECT AGENT <span class="dot">●</span> PRD v0.4 <span class="dot">●</span> ARCHITECTURE v0.2</span>
+      <span>FILED <span id="today"></span></span>
+    </div>
+    <h1 class="masthead-title">Architecture <em>by Diagram</em></h1>
+    <p class="masthead-sub">Eight views of a git-versioned, AI-augmented project operating system. Read the PRD for the rules; read these for the shape. <em>v0.2 revises §2, §3, §4, §8 against the post-review idempotence model — see REVIEW_NOTES.md.</em></p>
+    <div class="masthead-rule">
+      <span>SCROLL OR JUMP</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc-label">Contents</div>
+    <ul class="toc-list">
+      <li class="toc-item"><a class="toc-link" href="#d1"><span class="toc-num">01</span><span>The Inversion</span></a></li>
+      <li class="toc-item"><a class="toc-link" href="#d2"><span class="toc-num">02</span><span>System, Layered</span></a></li>
+      <li class="toc-item"><a class="toc-link" href="#d3"><span class="toc-num">03</span><span>Daily Pipeline</span></a></li>
+      <li class="toc-item"><a class="toc-link" href="#d4"><span class="toc-num">04</span><span>Signal Detection</span></a></li>
+      <li class="toc-item"><a class="toc-link" href="#d5"><span class="toc-num">05</span><span>Package Boundary</span></a></li>
+      <li class="toc-item"><a class="toc-link" href="#d6"><span class="toc-num">06</span><span>HITL / PR Cycle</span></a></li>
+      <li class="toc-item"><a class="toc-link" href="#d7"><span class="toc-num">07</span><span>Multi-Agent (P5b)</span></a></li>
+      <li class="toc-item"><a class="toc-link" href="#d8"><span class="toc-num">08</span><span>Idempotence</span></a></li>
+    </ul>
+  </nav>
+
+  <main class="main">
+
+    <!-- ============== 01 ============== -->
+    <section class="panel" id="d1">
+      <div class="panel-header">
+        <span class="panel-num">01<span class="panel-num-suffix">/08</span></span>
+        <h2 class="panel-title">The <em>Inversion</em></h2>
+        <p class="panel-subtitle">Manual era → signal-first model</p>
+      </div>
+      <p class="panel-intro">The conceptual shift the system enables. The PM stops being a curator <em>producing</em> stale representations and becomes an auditor <em>governing</em> a continuously-updated record.</p>
+      <div class="stage">
+        <div class="stage-meta">
+          <span>FIG. <span class="stage-id">01</span> — CONCEPTUAL</span>
+          <span>BEFORE / AFTER</span>
+        </div>
+        <div class="mermaid">
+graph TB
+    subgraph Manual["⏪ Manual Era (before)"]
+        direction TB
+        M_Sources["📥 Sources<br/>emails · meetings · docs"]
+        M_PM["👤 PM<br/>manual curation<br/>~80% of week"]
+        M_Artifacts["📄 Slides · Excel · Word<br/>(stale on arrival)"]
+        M_Dashboard["📊 Dashboard"]
+        M_Stake["👥 Stakeholder<br/>reads snapshot of last week"]
+
+        M_Sources --> M_PM
+        M_PM --> M_Artifacts
+        M_Artifacts --> M_Dashboard
+        M_Dashboard --> M_Stake
+    end
+
+    subgraph Signal["▶️ Signal-First (Project Agent)"]
+        direction TB
+        S_Sources["📥 Sources<br/>emails · meetings · docs"]
+        S_Pipeline["⚙️ Pipeline<br/>(automated, daily)"]
+        S_Record["📓 project.md<br/>+ event log<br/>(machine-readable)"]
+        S_Signals["🚨 Signals<br/>detected pre-dashboard"]
+        S_PM["👤 PM<br/>reviews + audits<br/>~20% of week"]
+        S_PR["📦 PR-approved<br/>artifacts"]
+        S_Stake["👥 Stakeholder"]
+
+        S_Sources --> S_Pipeline
+        S_Pipeline --> S_Record
+        S_Record --> S_Signals
+        S_Signals --> S_PM
+        S_PM --> S_PR
+        S_PR --> S_Stake
+    end
+
+    style Manual fill:#2a1417,stroke:#f87171
+    style Signal fill:#142a1c,stroke:#86efac
+        </div>
+      </div>
+      <p class="caption">The PM's relationship to the project record inverts: from <strong>producing</strong> it to <strong>governing</strong> it.</p>
+    </section>
+
+    <!-- ============== 02 ============== -->
+    <section class="panel" id="d2">
+      <div class="panel-header">
+        <span class="panel-num">02<span class="panel-num-suffix">/08</span></span>
+        <h2 class="panel-title">System, <em>Layered</em></h2>
+        <p class="panel-subtitle">The six-layer stack</p>
+      </div>
+      <p class="panel-intro">Sources flow in on the left. PR-approved artifacts flow out on the right. State is git-versioned and shared across layers.</p>
+      <div class="stage">
+        <div class="stage-meta">
+          <span>FIG. <span class="stage-id">02</span> — STRUCTURAL</span>
+          <span>HIGH-LEVEL VIEW</span>
+        </div>
+        <div class="mermaid">
+graph TB
+    Sources["📥 Sources<br/>File Drops · Backlog<br/>(MCP in P0.5)"]
+
+    subgraph Pipeline["⚙️ Pipeline (idempotent, runs daily)"]
+        direction TB
+        Ingest["1. Ingest"]
+        Parse["2. Parse<br/>(LLM cache)"]
+        WhLoad["3. Warehouse Load"]
+        Analyze["4. Analyze"]
+        Render["5. Render"]
+        Commit["6. Commit"]
+
+        Ingest --> Parse
+        Parse --> WhLoad
+        WhLoad --> Analyze
+        Analyze --> Render
+        Render --> Commit
+    end
+
+    subgraph State["💾 State (git-versioned)"]
+        direction TB
+        ProjectMD["📓 project.md<br/>bot-owned · full-rewrite"]
+        ProjectNotes["📝 project.notes.md<br/>PM-owned · never touched"]
+        Events[("📜 events.ndjson<br/>append-only")]
+        Warehouse[("🗄️ warehouse.duckdb<br/>materialized")]
+        Cache[("💾 cache/llm/<br/>response cache")]
+        Runs[("📊 runs/<br/>operations log")]
+        Reports["📄 reports/<br/>MD (HTML in P0.5)"]
+    end
+
+    PR["📦 Git PR<br/>auto/&lt;date&gt; branch"]
+    PM["👤 PM Review + Merge"]
+
+    Sources --> Pipeline
+    Pipeline <--> State
+    Pipeline --> PR
+    PR --> PM
+    PM -->|merge| State
+
+    style Pipeline fill:#0f1c2e,stroke:#7dd3fc
+    style State fill:#2a2418,stroke:#fbbf24
+        </div>
+      </div>
+      <p class="caption">Every box in the Pipeline subgraph is a function in <strong>pipeline/stages.py</strong> that imports primitives from <strong>src/project_agent/</strong>. State on the right is the only thing that persists.</p>
+    </section>
+
+    <!-- ============== 03 ============== -->
+    <section class="panel" id="d3">
+      <div class="panel-header">
+        <span class="panel-num">03<span class="panel-num-suffix">/08</span></span>
+        <h2 class="panel-title">Daily <em>Pipeline Flow</em></h2>
+        <p class="panel-subtitle">Source arrives → PR opens</p>
+      </div>
+      <p class="panel-intro">A new source lands. What happens between then and a PR being opened. Three decision diamonds carry the system's load-bearing contracts: <em>source-level idempotence</em>, <em>parse-level determinism</em>, and <em>trust</em>.</p>
+      <div class="stage">
+        <div class="stage-meta">
+          <span>FIG. <span class="stage-id">03</span> — OPERATIONAL</span>
+          <span>END-TO-END FLOW</span>
+        </div>
+        <div class="mermaid">
+flowchart LR
+    A[📧 New source<br/>arrives] --> B[Ingest:<br/>hash file]
+    B --> C{source_hash<br/>in manifest?}
+    C -->|yes| D[⏭️ Skip<br/>no source_ingested]
+    C -->|no| E[Emit<br/>source_ingested]
+    E --> F{prompt + source_hash<br/>in LLM cache?}
+    F -->|yes| G[Replay cached<br/>extraction<br/>byte-identical]
+    F -->|no| H[Call Claude<br/>cache response]
+    G --> I[Emit parsed events<br/>+ rewrite project.md]
+    H --> I
+    I --> J[Warehouse Load:<br/>DuckDB views]
+    J --> K[Analyze:<br/>SQL + LLM signals<br/>with evidence event_ids]
+    K --> L[Emit<br/>signal_detected]
+    I --> M[Render MD report]
+    L --> M
+    M --> N[Write ops log<br/>data/runs/&lt;id&gt;.json]
+    N --> O[Open PR<br/>auto/&lt;date&gt;]
+    O --> P{👤 PM<br/>review}
+    P -->|merge| Q[✅ State<br/>updated]
+    P -->|reject| R[❌ PR closed<br/>main untouched]
+
+    style C fill:#2a2418,stroke:#fbbf24
+    style F fill:#2a2418,stroke:#fbbf24
+    style P fill:#2a2418,stroke:#fbbf24
+    style Q fill:#142a1c,stroke:#86efac
+    style R fill:#2a1417,stroke:#f87171
+        </div>
+      </div>
+      <p class="caption"><strong>(C)</strong> is the <strong>source-level</strong> idempotence gate — same file, no new event. <strong>(F)</strong> is the <strong>parse-level</strong> determinism gate — same source under the same prompt version, replay the cached LLM response. <strong>(P)</strong> is the trust gate — main only changes when a human merges. (C) + (F) together are what make daily cron safe.</p>
+    </section>
+
+    <!-- ============== 04 ============== -->
+    <section class="panel" id="d4">
+      <div class="panel-header">
+        <span class="panel-num">04<span class="panel-num-suffix">/08</span></span>
+        <h2 class="panel-title">Signal <em>Detection</em></h2>
+        <p class="panel-subtitle">Deterministic SQL + LLM evaluation, both as events</p>
+      </div>
+      <p class="panel-intro">Both methods run over the same warehouse. Both write back as <em>signal_detected</em> events into the same log. This is what makes the audit trail uniform regardless of detection method.</p>
+      <div class="stage">
+        <div class="stage-meta">
+          <span>FIG. <span class="stage-id">04</span> — ANALYTICAL</span>
+          <span>DETECTION FLOW</span>
+        </div>
+        <div class="mermaid">
+flowchart TB
+    Events[("📜 events.ndjson<br/>Event Log")] --> Warehouse[("🗄️ DuckDB Warehouse<br/>excludes signal_detected,<br/>retracted, superseded")]
+
+    Warehouse --> Det["🔢 Deterministic<br/>SQL queries<br/>return event_ids"]
+    Warehouse --> LLM["🧠 LLM evaluation<br/>Claude API<br/>cites event_ids"]
+
+    Det --> DetMVP["MVP only:<br/>action_aging<br/>action_unowned<br/>blocker_unowned"]
+    Det --> DetP1["Phase 1+:<br/>risk_unaddressed<br/>blocker_aging<br/>deliverable_drift<br/>stakeholder_inactivity"]
+    Det --> DetP4["Phase 4 (deferred):<br/>scope_churn<br/>velocity_anomaly"]
+
+    LLM --> LLMSig["Phase 1+:<br/>risk_escalation<br/>risk_emergent<br/>tone_shift"]
+
+    DetMVP --> SignalEvent["🚨 signal_detected<br/>with evidence event_ids"]
+    DetP1 --> SignalEvent
+    DetP4 --> SignalEvent
+    LLMSig --> SignalEvent
+
+    SignalEvent --> Events
+    SignalEvent --> Report["📄 Status Report"]
+    SignalEvent --> PRSummary["📦 PR Summary"]
+
+    style Det fill:#0f1c2e,stroke:#7dd3fc
+    style LLM fill:#2a1f10,stroke:#fbbf24
+    style SignalEvent fill:#2a2418,stroke:#fbbf24
+    style DetMVP fill:#142a1c,stroke:#86efac
+        </div>
+      </div>
+      <p class="caption">Deterministic = auditable backbone. LLM = early-warning radar. <strong>Both are first-class.</strong> Two invariants: every signal carries <strong>evidence: [event_id, …]</strong> linking to triggering rows; detectors of either kind <strong>skip signal_detected events</strong> when reading the warehouse, so LLM reasoning never compounds on LLM reasoning.</p>
+    </section>
+
+    <!-- ============== 05 ============== -->
+    <section class="panel" id="d5">
+      <div class="panel-header">
+        <span class="panel-num">05<span class="panel-num-suffix">/08</span></span>
+        <h2 class="panel-title">Package <em>Boundary</em></h2>
+        <p class="panel-subtitle">The architectural invariant — §5.1</p>
+      </div>
+      <p class="panel-intro">The rule that makes Phase 5b multi-agent <em>possible</em> rather than a rewrite. Anything in red is forbidden outside the green substrate. CI lint enforces it from MVP onward. <em>(The lint catches honest mistakes; it doesn't trace transitive imports or importlib — see PRD §5.1.)</em></p>
+      <div class="stage">
+        <div class="stage-meta">
+          <span>FIG. <span class="stage-id">05</span> — INVARIANT</span>
+          <span>BOUNDARY MAP</span>
+        </div>
+        <div class="mermaid">
+graph TB
+    subgraph Wrappers["🤖 Wrappers — Phase 5b (agents/)"]
+        RiskAgent["Risk Agent<br/>~200 lines"]
+        StakeholderAgent["Stakeholder Agent<br/>~200 lines"]
+        ScopeAgent["Scope Agent<br/>~200 lines"]
+    end
+
+    subgraph Glue["🔗 Glue — pipeline/"]
+        CLI["cli.py"]
+        Stages["stages.py"]
+    end
+
+    subgraph Substrate["🧱 Substrate — src/project_agent/"]
+        Schemas["schemas.py<br/>(pydantic models)"]
+        EventsAPI["events.py<br/>append · query · hash"]
+        WarehouseAPI["warehouse.py<br/>load · query"]
+        ProjectsAPI["projects.py<br/>parse · render · notes"]
+        SignalsAPI["signals/<br/>deterministic · llm"]
+        IngestAPI["ingest/<br/>inbox · backlog · mcp"]
+        RenderAPI["render.py"]
+        GitAPI["git.py"]
+        LLMAPI["llm.py"]
+    end
+
+    subgraph Forbidden["❌ Forbidden Outside Substrate"]
+        DirectIO["Direct file I/O on<br/>events.ndjson"]
+        DirectDB["Direct DuckDB<br/>connections"]
+        DirectAPI["Direct anthropic.*<br/>calls"]
+        DirectMD["Direct project.md<br/>writes"]
+    end
+
+    Wrappers ==>|allowed| Substrate
+    Glue ==>|allowed| Substrate
+
+    Wrappers -.->|❌ CI lint fails| Forbidden
+    Glue -.->|❌ CI lint fails| Forbidden
+
+    style Forbidden fill:#2a1417,stroke:#f87171
+    style Substrate fill:#142a1c,stroke:#86efac
+    style Wrappers fill:#2a2418,stroke:#fbbf24
+    style Glue fill:#0f1c2e,stroke:#7dd3fc
+        </div>
+      </div>
+      <p class="caption">Three layers, each boring. <strong>Substrate</strong> has the schemas, the I/O, the validation, the idempotence contracts. <strong>Glue</strong> and <strong>Wrappers</strong> can only call into substrate APIs — they cannot reimplement them.</p>
+    </section>
+
+    <!-- ============== 06 ============== -->
+    <section class="panel" id="d6">
+      <div class="panel-header">
+        <span class="panel-num">06<span class="panel-num-suffix">/08</span></span>
+        <h2 class="panel-title">HITL / <em>PR Cycle</em></h2>
+        <p class="panel-subtitle">The trust mechanism, sequenced</p>
+      </div>
+      <p class="panel-intro">The daily loop. Nothing externally observable happens without a merged PR. The Phase 3+ <em>--send</em> extension is shaded separately.</p>
+      <div class="stage">
+        <div class="stage-meta">
+          <span>FIG. <span class="stage-id">06</span> — TEMPORAL</span>
+          <span>SEQUENCE</span>
+        </div>
+        <div class="mermaid">
+sequenceDiagram
+    participant Cron as ⏰ Daily Cron
+    participant Pipeline as ⚙️ Pipeline
+    participant State as 💾 git main
+    participant PR as 📦 Git PR
+    participant PM as 👤 PM
+    participant Ext as 👥 Stakeholders
+
+    Cron->>Pipeline: trigger run
+    Pipeline->>State: read sources, project.md, project.notes.md, events
+    Pipeline->>Pipeline: parse · warehouse load · analyze · render
+    Pipeline->>PR: open on auto/&lt;date&gt; branch
+    Note over PR: contains: project.md diff,<br/>new signals, status report,<br/>ops log, (P3+) outbox drafts
+    PR->>PM: notify
+
+    alt PM accepts
+        PM->>PR: review diff, signals, drafts
+        PM->>State: merge to main
+        Note over State: ✅ project.md updated<br/>✅ reports committed<br/>✅ signals in event log<br/>✅ ops log committed
+    else PM rejects
+        PM->>PR: close branch
+        Note over State: ❌ no change to main
+    end
+
+    Note over Ext: 🔒 zero external action<br/>without merge
+
+    rect rgb(42, 36, 24)
+        Note over PM,Ext: Phase 3+ only
+        PM->>PR: approve outbox/ + flag --send
+        PR->>Ext: send via Gmail MCP
+    end
+        </div>
+      </div>
+      <p class="caption">The invariant in one line: <strong>the pipeline never takes externally observable action without a merged PR.</strong> This is what makes the system safe to leave running on cron.</p>
+    </section>
+
+    <!-- ============== 07 ============== -->
+    <section class="panel" id="d7">
+      <div class="panel-header">
+        <span class="panel-num">07<span class="panel-num-suffix">/08</span></span>
+        <h2 class="panel-title">Multi-Agent <em>(Phase 5b)</em></h2>
+        <p class="panel-subtitle">Why the boundary matters</p>
+      </div>
+      <p class="panel-intro">Phase 5b doesn't rewrite anything — it adds wrappers over the existing substrate. Each agent is ~200 lines: prompt + tool definitions + Claude API loop. <em>(Orchestration concerns — conflict resolution, concurrency, cost budgeting — are 5b's actual work, separate from the package-boundary precondition shown here. See REVIEW_NOTES.md §3.8.)</em></p>
+      <div class="stage">
+        <div class="stage-meta">
+          <span>FIG. <span class="stage-id">07</span> — FUTURE STATE</span>
+          <span>EXTENSION POINT</span>
+        </div>
+        <div class="mermaid">
+graph LR
+    subgraph Phase5["🤖 Phase 5b — agents/"]
+        direction TB
+        Risk["Risk Agent"]
+        Stake["Stakeholder Agent"]
+        Scope["Scope Agent"]
+    end
+
+    subgraph Existing["✅ Already exists from MVP–Phase 4"]
+        direction TB
+        Pipeline["⚙️ Pipeline<br/>cli.py · stages.py"]
+    end
+
+    subgraph Sub["🧱 src/project_agent/<br/>(unchanged)"]
+        direction TB
+        EventsAPI["events.append/query"]
+        SignalsAPI["signals.write_signal"]
+        ProjectsAPI["projects.update"]
+        LLMAPI["llm.client"]
+        SchemasAPI["schemas.*"]
+    end
+
+    Risk --> EventsAPI
+    Risk --> SignalsAPI
+    Risk --> LLMAPI
+    Risk --> SchemasAPI
+
+    Stake --> EventsAPI
+    Stake --> ProjectsAPI
+    Stake --> LLMAPI
+    Stake --> SchemasAPI
+
+    Scope --> EventsAPI
+    Scope --> SignalsAPI
+    Scope --> LLMAPI
+    Scope --> SchemasAPI
+
+    Pipeline --> EventsAPI
+    Pipeline --> SignalsAPI
+    Pipeline --> ProjectsAPI
+
+    style Phase5 fill:#2a2418,stroke:#fbbf24
+    style Sub fill:#142a1c,stroke:#86efac
+    style Existing fill:#0f1c2e,stroke:#7dd3fc
+        </div>
+      </div>
+      <p class="caption">The substrate exposes the <strong>same</strong> Event type, the <strong>same</strong> idempotence guarantee, the <strong>same</strong> audit surface to the deterministic pipeline and to a Risk Agent. The pipeline doesn't know whether a signal_detected event came from a SQL query or from an agent's reasoning — and it doesn't need to.</p>
+    </section>
+
+    <!-- ============== 08 ============== -->
+    <section class="panel" id="d8">
+      <div class="panel-header">
+        <span class="panel-num">08<span class="panel-num-suffix">/08</span></span>
+        <h2 class="panel-title">Idempotence <em>Model</em></h2>
+        <p class="panel-subtitle">The contract that makes daily cron safe</p>
+      </div>
+      <p class="panel-intro">Four runs of the same source, illustrated. The single property that lets the system run on a schedule without operator anxiety — anchored at <em>two</em> layers, neither of which depends on LLM determinism.</p>
+      <div class="stage">
+        <div class="stage-meta">
+          <span>FIG. <span class="stage-id">08</span> — CONTRACTUAL</span>
+          <span>SOURCE-HASH + LLM CACHE</span>
+        </div>
+        <div class="mermaid">
+flowchart LR
+    subgraph Run1["Run 1 (Monday)"]
+        S1[email_alex.eml] --> H1[source_hash:<br/>sha256:abc123]
+        H1 --> Man1{in manifest?}
+        Man1 -->|no| Ing1[emit<br/>source_ingested]
+        Ing1 --> Cache1{prompt + hash<br/>in LLM cache?}
+        Cache1 -->|no| LLM1[Call Claude<br/>cache response]
+        LLM1 --> E1[Emit parsed events<br/>+1 source_ingested<br/>+N parsed]
+    end
+
+    subgraph Run2["Run 2 (Monday, re-run)"]
+        S2[email_alex.eml] --> H2[source_hash:<br/>sha256:abc123]
+        H2 --> Man2{in manifest?}
+        Man2 -->|yes| Skip[⏭️ skip ingest<br/>skip parse<br/>+0 events]
+    end
+
+    subgraph Run3["Run 3 (Tuesday, edited email)"]
+        S3[email_alex.eml<br/>EDITED] --> H3[source_hash:<br/>sha256:xyz789]
+        H3 --> Man3{in manifest?}
+        Man3 -->|no, new hash| Ing3[emit<br/>source_ingested]
+        Ing3 --> Cache3{prompt + hash<br/>in cache?}
+        Cache3 -->|no, new key| LLM3[Call Claude]
+        LLM3 --> E3[Emit new events<br/>supersedes:<br/>prior parsed]
+    end
+
+    subgraph Run4["Run 4 (Wed, prompt v3→v4)"]
+        S4[email_alex.eml<br/>same] --> H4[source_hash:<br/>sha256:abc123]
+        H4 --> Man4{in manifest?}
+        Man4 -->|yes, skip ingest| NoIng[no source_ingested]
+        NoIng --> Cache4{prompt v4<br/>+ hash<br/>in cache?}
+        Cache4 -->|no, prompt changed| LLM4[Re-parse<br/>under prompt v4]
+        LLM4 --> E4[Emit new events<br/>supersedes:<br/>v3 parsed]
+    end
+
+    style Skip fill:#0f1c2e,stroke:#7dd3fc
+    style E3 fill:#2a2418,stroke:#fbbf24
+    style E4 fill:#2a2418,stroke:#fbbf24
+        </div>
+      </div>
+      <p class="caption">Idempotence is enforced at <strong>two layers</strong>: the source manifest (file-level hash, skips re-ingest) and the LLM response cache (prompt-version × source-hash, replays byte-identical extraction). The supersedes-chain (Runs 3 and 4) keeps the log honest about <em>which</em> version of a source produced <em>which</em> events without ever mutating in place. <strong>v0.2 note:</strong> the v0.1 model dedup'd on sha256(payload + source_ref) where payload was LLM-extracted — i.e. it relied on LLM determinism. That was the wrong primitive. The current model dedupes at the source layer (where determinism is real) and uses the LLM cache to make parse output deterministic by construction.</p>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <span>PROJECT AGENT · ARCHITECTURE v0.2</span>
+    <span>COMPANION TO PRD.md v0.4 · REVIEW_NOTES.md</span>
+    <span><a href="#d1">↑ TOP</a></span>
+  </footer>
+
+</div>
+
+<script>
+  // Date stamp
+  const today = new Date();
+  const opts = { year: 'numeric', month: 'short', day: '2-digit' };
+  document.getElementById('today').textContent = today.toLocaleDateString('en-US', opts).toUpperCase();
+
+  // Mermaid init with custom dark theme
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      background: '#14171f',
+      primaryColor: '#1a1d2a',
+      primaryTextColor: '#e8e3d3',
+      primaryBorderColor: '#5eead4',
+      lineColor: '#5eead4',
+      secondaryColor: '#1a2332',
+      tertiaryColor: '#0f1420',
+      mainBkg: '#1a1d2a',
+      secondBkg: '#11131c',
+      tertiaryBkg: '#08090f',
+      fontFamily: '"JetBrains Mono", monospace',
+      fontSize: '13px',
+      nodeBorder: '#5eead4',
+      clusterBkg: 'rgba(94, 234, 212, 0.05)',
+      clusterBorder: 'rgba(94, 234, 212, 0.3)',
+      edgeLabelBackground: '#11131c',
+      labelBackground: '#11131c',
+      // Sequence diagram
+      actorBkg: '#1a1d2a',
+      actorBorder: '#5eead4',
+      actorTextColor: '#e8e3d3',
+      actorLineColor: '#3f4654',
+      signalColor: '#a8b0bf',
+      signalTextColor: '#e8e3d3',
+      labelBoxBkgColor: '#1a1d2a',
+      labelBoxBorderColor: '#5eead4',
+      labelTextColor: '#e8e3d3',
+      loopTextColor: '#e8e3d3',
+      noteBkgColor: '#2a2418',
+      noteBorderColor: '#fbbf24',
+      noteTextColor: '#e8e3d3',
+      activationBkgColor: '#1a2332',
+      activationBorderColor: '#5eead4',
+      sequenceNumberColor: '#08090f'
+    },
+    flowchart: {
+      htmlLabels: true,
+      curve: 'basis',
+      padding: 20
+    },
+    sequence: {
+      actorMargin: 60,
+      messageAlign: 'center',
+      mirrorActors: false,
+      bottomMarginAdj: 10,
+      noteMargin: 12
+    },
+    securityLevel: 'loose'
+  });
+
+  // TOC active section observer
+  const sections = document.querySelectorAll('.panel');
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const linkMap = new Map();
+  tocLinks.forEach(l => {
+    const id = l.getAttribute('href').slice(1);
+    linkMap.set(id, l);
+  });
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const link = linkMap.get(entry.target.id);
+      if (!link) return;
+      if (entry.isIntersecting && entry.intersectionRatio > 0.2) {
+        tocLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+      }
+    });
+  }, {
+    rootMargin: '-20% 0px -60% 0px',
+    threshold: [0, 0.2, 0.5, 1]
+  });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>
