@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from project_agent import events as events_api
-from project_agent import llm, projects
+from project_agent import llm, projects, warehouse
 from project_agent.ingest import inbox
 from project_agent.schemas import (
     ActionAddedPayload,
@@ -255,4 +255,42 @@ def run_parse(
             "events_emitted": events_emitted,
             "errors": errors,
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stage 3 — Warehouse Load
+# ---------------------------------------------------------------------------
+
+def run_warehouse(
+    events_path: Path,
+    db_path: Path,
+    run_id: str,
+) -> StageResult:
+    """Stage 3 — materialize events into DuckDB views (PRD §8.3, MVP)."""
+    start = time.monotonic()
+    events_loaded = 0
+
+    try:
+        warehouse.load(events_path, db_path)
+        rows = warehouse.query(db_path, "SELECT COUNT(*) AS n FROM events_raw")
+        events_loaded = int(rows[0]["n"]) if rows else 0
+    except Exception:
+        logger.exception("Warehouse stage failed")
+        elapsed = int((time.monotonic() - start) * 1000)
+        return StageResult(
+            name="warehouse",
+            status="error",
+            duration_ms=elapsed,
+            counts={"events_loaded": 0, "errors": 1},
+            error="See logs for details",
+        )
+
+    elapsed = int((time.monotonic() - start) * 1000)
+    logger.info("Warehouse complete: %d events loaded (%dms)", events_loaded, elapsed)
+    return StageResult(
+        name="warehouse",
+        status="ok",
+        duration_ms=elapsed,
+        counts={"events_loaded": events_loaded, "errors": 0},
     )
