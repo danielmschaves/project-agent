@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from project_agent import events as events_api
-from project_agent import llm, projects, render, warehouse
+from project_agent import git, llm, projects, render, warehouse
 from project_agent.ingest import inbox
 from project_agent.schemas import (
     ActionAddedPayload,
@@ -18,6 +18,7 @@ from project_agent.schemas import (
     DeterministicActor,
     Event,
     LLMActor,
+    RunLog,
     Signal,
     SignalDetectedPayload,
     SourceIngestedPayload,
@@ -451,4 +452,83 @@ def run_render(
         status="ok",
         duration_ms=elapsed,
         counts={"reports_written": 1, "errors": 0},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stage 6 — Commit + PR
+# ---------------------------------------------------------------------------
+
+def run_commit(
+    project_id: str,
+    project_dir: Path,
+    run_log: RunLog,
+    repo_root: Path,
+) -> StageResult:
+    """Stage 6 — branch, commit changed files, open GitHub PR (PRD §8.6, MVP).
+
+    Set DRY_RUN=1 to skip the actual git operations (useful in tests).
+    """
+    import os
+    start = time.monotonic()
+
+    if os.environ.get("DRY_RUN") == "1":
+        elapsed = int((time.monotonic() - start) * 1000)
+        logger.info("DRY_RUN=1 — skipping commit stage")
+        return StageResult(
+            name="commit",
+            status="skipped",
+            duration_ms=elapsed,
+            counts={"errors": 0},
+        )
+
+    try:
+        from datetime import date
+        branch_name = f"auto/{date.today().isoformat()}"
+        git.branch(repo_root, branch_name)
+
+        signals_new = sum(
+            s.counts.get("signals_new", 0)
+            for s in run_log.stages
+            if s.name == "analyze"
+        )
+        commit_msg = (
+            f"chore(agent): run {run_log.run_id} — {signals_new} signal(s)\n\n"
+            f"Project: {project_id}\n"
+            f"Stages: {', '.join(s.name for s in run_log.stages)}"
+        )
+        git.commit_all(repo_root, commit_msg)
+
+        pr_body = (
+            f"## Summary\n\n"
+            f"- Run ID: `{run_log.run_id}`\n"
+            f"- Project: `{project_id}`\n"
+            f"- Signals detected: {signals_new}\n\n"
+            f"## Stages\n\n"
+            + "\n".join(
+                f"- **{s.name}**: {s.status} {s.counts}"
+                for s in run_log.stages
+            )
+            + "\n\n🤖 Generated with [Project Agent](https://github.com/danielmschaves/project-agent)"
+        )
+        pr_url = git.open_pr(repo_root, f"[agent] {project_id} — run {run_log.run_id}", pr_body)
+
+    except Exception:
+        logger.exception("Commit stage failed")
+        elapsed = int((time.monotonic() - start) * 1000)
+        return StageResult(
+            name="commit",
+            status="error",
+            duration_ms=elapsed,
+            counts={"errors": 1},
+            error="See logs for details",
+        )
+
+    elapsed = int((time.monotonic() - start) * 1000)
+    logger.info("Commit stage complete: %s", pr_url or "(dry-run)")
+    return StageResult(
+        name="commit",
+        status="ok",
+        duration_ms=elapsed,
+        counts={"errors": 0},
     )
