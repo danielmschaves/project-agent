@@ -1,0 +1,9 @@
+{
+  "due_days_past": 0,
+  "stale_days": 14,
+  "severity_rules": {
+    "high": {"min_count": 3},
+    "medium": {"min_count": 1},
+    "low": {"min_count": 0}
+  }
+}
