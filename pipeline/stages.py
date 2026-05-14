@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -17,9 +18,12 @@ from project_agent.schemas import (
     DeterministicActor,
     Event,
     LLMActor,
+    Signal,
+    SignalDetectedPayload,
     SourceIngestedPayload,
     StageResult,
 )
+from project_agent.signals import deterministic
 
 logger = logging.getLogger(__name__)
 
@@ -294,3 +298,123 @@ def run_warehouse(
         duration_ms=elapsed,
         counts={"events_loaded": events_loaded, "errors": 0},
     )
+
+
+# ---------------------------------------------------------------------------
+# Stage 4 — Analyze (deterministic signals)
+# ---------------------------------------------------------------------------
+
+def _load_signal_thresholds(schemas_dir: Path) -> dict[str, dict[str, object]]:
+    result: dict[str, dict[str, object]] = {}
+    for name in ("action_aging", "action_unowned", "blocker_unowned"):
+        path = schemas_dir / f"{name}.json"
+        result[name] = dict(json.loads(path.read_text(encoding="utf-8"))) if path.exists() else {}
+    return result
+
+
+def _signal_source_hash(signal_type: str, evidence: list[str]) -> str:
+    """Stable hash encoding signal type + evidence; used as the dedup key."""
+    content = f"{signal_type}:{','.join(sorted(evidence))}"
+    return "sha256:" + hashlib.sha256(content.encode()).hexdigest()
+
+
+def run_analyze(
+    project_id: str,
+    db_path: Path,
+    events_path: Path,
+    run_id: str,
+    schemas_dir: Path | None = None,
+) -> tuple[StageResult, list[Signal]]:
+    """Stage 4 — deterministic signal detection (PRD §8.4, MVP).
+
+    Returns (StageResult, signals) so the render stage can consume signals
+    without re-reading the events log.
+    """
+    if schemas_dir is None:
+        schemas_dir = Path("data/schemas/signals")
+
+    start = time.monotonic()
+    signals_new = 0
+    signals_skipped = 0
+    errors = 0
+    emitted: list[Signal] = []
+
+    try:
+        thresholds = _load_signal_thresholds(schemas_dir)
+        # Dedup key: source_hash encodes signal_type + sorted evidence, stable across runs
+        seen_source_hashes = {
+            e.source_hash
+            for e in events_api.query(events_path, types=["signal_detected"])
+        }
+
+        all_signals: list[Signal] = []
+        for detector_fn, key in [
+            (deterministic.detect_action_aging, "action_aging"),
+            (deterministic.detect_action_unowned, "action_unowned"),
+            (deterministic.detect_blocker_unowned, "blocker_unowned"),
+        ]:
+            try:
+                all_signals.extend(detector_fn(db_path, project_id, run_id, thresholds.get(key, {})))
+            except Exception:
+                logger.exception("Detector %s failed", key)
+                errors += 1
+
+        for signal in all_signals:
+            source_hash = _signal_source_hash(signal.type, signal.evidence)
+
+            if source_hash in seen_source_hashes:
+                signals_skipped += 1
+                continue
+
+            payload = SignalDetectedPayload(
+                type="signal_detected",
+                signal_id=signal.signal_id,
+                signal_type=signal.type,
+                category=signal.category,
+                severity=signal.severity,
+                confidence=signal.confidence,
+                evidence=signal.evidence,
+                method=signal.method,
+                rationale=signal.rationale,
+                recommended_action=signal.recommended_action,
+            )
+            event = Event(
+                event_id=str(uuid.uuid4()),
+                ts=datetime.now(tz=timezone.utc),
+                run_id=run_id,
+                project_id=project_id,
+                type="signal_detected",
+                actor=DeterministicActor(kind="deterministic", detector=signal.type),
+                source_ref="derived/signals",
+                source_hash=source_hash,
+                payload=payload,
+                hash=events_api.hash_event(payload.model_dump(), source_hash),
+                confidence=signal.confidence,
+            )
+            events_api.append(event, events_path)
+            seen_source_hashes.add(source_hash)
+            emitted.append(signal)
+            signals_new += 1
+
+    except Exception:
+        logger.exception("Analyze stage failed")
+        elapsed = int((time.monotonic() - start) * 1000)
+        return StageResult(
+            name="analyze",
+            status="error",
+            duration_ms=elapsed,
+            counts={"signals_new": 0, "signals_skipped": 0, "errors": errors + 1},
+            error="See logs for details",
+        ), []
+
+    elapsed = int((time.monotonic() - start) * 1000)
+    logger.info(
+        "Analyze complete: %d new signals, %d skipped (%dms)",
+        signals_new, signals_skipped, elapsed,
+    )
+    return StageResult(
+        name="analyze",
+        status="ok",
+        duration_ms=elapsed,
+        counts={"signals_new": signals_new, "signals_skipped": signals_skipped, "errors": errors},
+    ), emitted
