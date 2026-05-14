@@ -1,0 +1,23 @@
+From: bob.kim@example.com
+To: alice.chen@example.com
+Date: Tue, 22 Apr 2026 14:30:00 +0000
+Subject: Architecture review complete + open items
+
+Hi Alice,
+
+Architecture review done. ADR committed to the repo. A few open items came up:
+
+Actions:
+- Bob Kim to draft Redis circuit-breaker design doc by 2026-05-05
+- Carol Davis to schedule JWT key rotation design review — no due date set yet
+- Alice Chen to confirm Partner B HIPAA requirements with legal by 2026-05-10
+
+Blockers:
+- Security team hasn't confirmed availability for threat model review — waiting on Carol
+
+Decisions:
+- Agreed to use Kubernetes for deployment (previously undecided)
+- API versioning: URI-based (/v1/, /v2/) not header-based
+
+Best,
+Bob
