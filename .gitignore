@@ -1,0 +1,33 @@
+# Environment
+.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.log
+
+# Derived data (regenerated from events.ndjson)
+data/warehouse.duckdb
+
+# LLM response cache (large, machine-local)
+data/cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Local-only design documents (for the maintainer; not part of the public repo)
+ARCHITECTURE.md
+REVIEW_NOTES.md
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
