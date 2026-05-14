@@ -1,0 +1,22 @@
+From: dave.park@example.com
+To: alice.chen@example.com
+Date: Wed, 13 May 2026 16:45:00 +0000
+Subject: Re: Integration spec — urgent
+
+Alice,
+
+I need to escalate. Partner A's board presentation is June 10. I need the API contract locked by June 1. That gives us less than 3 weeks.
+
+Current blockers on our side:
+- We haven't received the draft API contract yet (was due May 20 from Bob)
+- The auth spec is still unclear on token scopes for read-only vs. read-write partners
+
+Actions I need from the team:
+- Bob Kim to deliver API contract draft by 2026-05-20 (hard deadline from our side)
+- Alice Chen to clarify token scope model by 2026-05-16
+- Alice Chen to confirm load testing timeline — we need at least 1 week for our own integration testing before the June 10 board meeting
+
+If the API contract slips past May 20 we will have to brief our board on a delayed integration, which is not a good look.
+
+Dave Park
+Partner A

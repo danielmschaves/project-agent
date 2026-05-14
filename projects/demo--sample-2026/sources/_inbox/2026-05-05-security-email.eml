@@ -1,0 +1,20 @@
+From: carol.davis@example.com
+To: alice.chen@example.com
+Date: Tue, 05 May 2026 09:15:00 +0000
+Subject: Security review update — JWT key rotation concern
+
+Alice,
+
+I've been able to start on the threat model. Should have it done by May 15 as planned.
+
+One concern I flagged internally: the JWT signing key rotation process isn't documented anywhere. If a key is compromised we have no runbook. This needs to be resolved before M2 sign-off.
+
+Actions I'm tracking:
+- Carol Davis to complete threat model by 2026-05-15
+- Bob Kim to write JWT key rotation runbook by 2026-05-20
+- Alice Chen to schedule security sign-off meeting for week of 2026-05-26
+
+Blocker:
+- JWT key rotation runbook missing — blocks security sign-off for auth service staging promotion
+
+Carol

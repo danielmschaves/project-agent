@@ -1,0 +1,11 @@
+id,title,owner,status,priority,due
+BKL-001,Implement rate limiting Redis layer,bob.kim,in-progress,high,2026-05-20
+BKL-002,Partner onboarding portal UI,unassigned,not-started,high,2026-06-15
+BKL-003,Load testing script setup,unassigned,not-started,medium,2026-06-01
+BKL-004,Observability dashboards,unassigned,not-started,medium,2026-06-20
+BKL-005,HIPAA compliance checklist for Partner B,,not-started,high,2026-05-31
+BKL-006,Redis circuit-breaker design doc,bob.kim,not-started,high,2026-04-30
+BKL-007,API contract v1 draft,bob.kim,not-started,high,2026-05-20
+BKL-008,Partner A integration testing,dave.park,not-started,medium,2026-06-20
+BKL-009,Runbook: JWT key rotation,,not-started,high,2026-05-20
+BKL-010,Disaster recovery plan,,not-started,low,2026-07-01
