@@ -82,7 +82,8 @@ def scan_inbox(project_dir: Path) -> list[IngestResult]:
         source_hash = _sha256(file_path)
 
         if source_hash in manifest:
-            logger.debug("Skip %s: hash already in manifest", file_path.name)
+            logger.debug("Skip %s: hash already in manifest; removing from inbox", file_path.name)
+            file_path.unlink()
             continue
 
         source_type = _classify(file_path.name)

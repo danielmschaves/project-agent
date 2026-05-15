@@ -163,24 +163,20 @@ src/project_agent/
 
 ---
 
-## Current Phase: MVP (Phase 0)
+## Current Phase: Phase 0.5 (HTML + MCP)
 
-**Out of scope for MVP — do not build these:**
-- HTML rendering (Phase 0.5)
-- MCP ingest — Gmail/Drive/Calendar (Phase 0.5)
+Phase 0 (MVP) is **complete** — all six stages run end-to-end, idempotence verified, three deterministic signals firing, package-boundary lint passing.
+
+**Phase 0.5 status:**
+- ✅ MCP ingest — `project_agent.ingest.mcp` implemented (Gmail/Drive/Calendar via `google-api-python-client`). Gate: set `GOOGLE_TOKEN_PATH=<path-to-token.json>`. If unset, pipeline falls back to file-drop only.
+- ✅ 30-day history backfill — 17 synthetic source files in `_inbox/` spanning 2026-04-10 to 2026-05-14.
+- 🔲 HTML rendering (Phase 0.5) — design system to be added separately; `render.py` is still MD-only.
+- 🔲 Portfolio PR shape decision — document before Phase 2.
+
+**Out of scope for Phase 0.5 — do not build these yet:**
 - LLM signals (Phase 1)
 - `risks` / `decisions` / `milestones` / `stakeholders` warehouse tables (Phase 1)
 - Portfolio rollup (Phase 2), outbound emails (Phase 3), Jira (Phase 4), multi-agent (Phase 5)
-
-**MVP Definition of Done (PRD §10):**
-- `python -m pipeline run --project <id>` executes all six stages end-to-end. Ingest is file-drop only.
-- Re-running produces zero diff (`git status` clean after second run).
-- ≥ 20 events spanning ≥ 7 days. DuckDB exposes `events`, `actions`, `blockers` tables.
-- Three deterministic signals firing: `action_aging`, `action_unowned`, `blocker_unowned`. Each `signal_detected` event carries `evidence: [event_id, ...]`.
-- `project_agent.events.query` returns deterministic results across runs.
-- Operations log (`data/runs/<run_id>.json`) written every run.
-- Event schema includes all v0.4 fields: `schema_version`, `run_id`, `source_hash`, structured `actor`, `confidence`, `supersedes`/`superseded_by`, `retracted`/`retracted_reason`. `payload` is a discriminated union.
-- Package-boundary lint passing.
 
 ---
 
@@ -263,6 +259,7 @@ Each signal has a JSON spec under `data/schemas/signals/<type>.json`. SQL detect
 - **Inlining a prompt as a Python string.** Prompts live in `prompts/*.md`. Bump `version` when you change one.
 - **Adding a new event type without updating the discriminated union.** Update `project_agent.schemas` first.
 - **Reading from `sources/<typed-folder>/` before ingest runs.** Ingest moves files out of `_inbox/`. Other stages assume files are in typed folders.
+- **Expecting `_inbox/` to retain skipped files.** `scan_inbox` now deletes files from `_inbox/` when their `source_hash` is already in `manifest.json`. This keeps the inbox clean across MCP re-fetches; don't rely on skipped files persisting there.
 - **Hand-editing `events.ndjson`.** Append-only, package-mediated. Use `event_retracted` events instead.
 - **Forgetting the operations log.** Each stage must update `data/runs/<run_id>.json`.
 
@@ -270,9 +267,10 @@ Each signal has a JSON spec under `data/schemas/signals/<type>.json`. SQL detect
 
 ## Decisions Already Made
 
-- **MVP ingest is file-drop only.** MCP (Gmail/Drive/Calendar) is Phase 0.5.
-- **MVP signals are deterministic only.** LLM signals come in Phase 1.
-- **MVP render is MD only.** HTML is Phase 0.5.
+- **MCP ingest is live in Phase 0.5.** Set `GOOGLE_TOKEN_PATH=<path-to-token.json>` (OAuth2 authorized-user format). Without it, the stage silently skips MCP and runs file-drop only. Token is refreshed in-place when expired.
+- **MCP adapters write to `_inbox/` only.** They do not emit events. `inbox.scan_inbox` handles classification, manifest dedup, and event emission — same as file-drop. `scan_inbox` now deletes already-known files from `_inbox/` (hash in manifest) so re-fetched MCP content does not accumulate.
+- **Phase 0.5 signals are deterministic only.** LLM signals come in Phase 1.
+- **Phase 0.5 render is MD only.** HTML rendering deferred to design-system work.
 - **Idempotence is anchored on source-hash + LLM response cache.** Event-hash dedup is a secondary defense.
 - **`event_retracted` is the mechanism for fixing bad data.** Never mutate `events.ndjson`.
 - **`Event.payload` and `actor` are discriminated unions.** No `dict[str, Any]`.
