@@ -13,6 +13,9 @@ dependencies = [
     "pydantic>=2.0.0",
     "gitpython>=3.1.0",
     "python-frontmatter>=1.1.0",
+    "google-api-python-client>=2.100",
+    "google-auth-httplib2>=0.2",
+    "google-auth-oauthlib>=1.1",
 ]
 
 [project.optional-dependencies]
@@ -49,3 +52,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+]
