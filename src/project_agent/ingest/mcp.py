@@ -87,26 +87,29 @@ def fetch_gmail(
             .execute()
         )
         for msg_ref in response.get("messages", []):
-            msg = (
-                service.users()
-                .messages()
-                .get(userId="me", id=msg_ref["id"], format="raw")
-                .execute()
-            )
-            raw_bytes = base64.urlsafe_b64decode(msg["raw"] + "==")
-            parsed = message_from_bytes(raw_bytes)
             try:
-                date_prefix = parsedate_to_datetime(parsed.get("Date") or "").strftime("%Y-%m-%d")
-            except Exception:
-                date_prefix = "unknown"
-            msg_id_short = msg_ref["id"][:12]
-            filename = f"{date_prefix}-gmail-{msg_id_short}.eml"
+                msg = (
+                    service.users()
+                    .messages()
+                    .get(userId="me", id=msg_ref["id"], format="raw")
+                    .execute()
+                )
+                raw_bytes = base64.urlsafe_b64decode(msg["raw"] + "==")
+                parsed = message_from_bytes(raw_bytes)
+                try:
+                    date_prefix = parsedate_to_datetime(parsed.get("Date") or "").strftime("%Y-%m-%d")
+                except Exception:
+                    date_prefix = "unknown"
+                msg_id_short = msg_ref["id"][:12]
+                filename = f"{date_prefix}-gmail-{msg_id_short}.eml"
 
-            dest = inbox_dir / filename
-            if not dest.exists():
-                dest.write_bytes(raw_bytes)
-                written.append(dest)
-                logger.debug("Gmail: wrote %s (%d bytes)", filename, len(raw_bytes))
+                dest = inbox_dir / filename
+                if not dest.exists():
+                    dest.write_bytes(raw_bytes)
+                    written.append(dest)
+                    logger.debug("Gmail: wrote %s (%d bytes)", filename, len(raw_bytes))
+            except Exception:
+                logger.exception("Gmail: failed to process message id=%s; skipping", msg_ref.get("id"))
 
     except RefreshError:
         logger.warning("Gmail: OAuth token refresh failed — skipping Gmail ingest")
@@ -150,42 +153,45 @@ def fetch_drive(
             .execute()
         )
         for f in response.get("files", []):
-            mime = f.get("mimeType", "")
-            name = f.get("name", f["id"])
-            safe_name = "".join(c if c.isalnum() or c in "-_." else "_" for c in name)
-            date_prefix = (f.get("modifiedTime") or "")[:10]
+            try:
+                mime = f.get("mimeType", "")
+                name = f.get("name", f["id"])
+                safe_name = "".join(c if c.isalnum() or c in "-_." else "_" for c in name)
+                date_prefix = (f.get("modifiedTime") or "")[:10]
 
-            if mime == "application/vnd.google-apps.document":
-                content = service.files().export(fileId=f["id"], mimeType="text/plain").execute()
-                filename = f"{date_prefix}-drive-{safe_name}.md"
-                dest = inbox_dir / filename
-                if not dest.exists():
-                    dest.write_bytes(content if isinstance(content, bytes) else content.encode())
-                    written.append(dest)
-                    logger.debug("Drive: exported Google Doc → %s", filename)
+                if mime == "application/vnd.google-apps.document":
+                    content = service.files().export(fileId=f["id"], mimeType="text/plain").execute()
+                    filename = f"{date_prefix}-drive-{safe_name}.md"
+                    dest = inbox_dir / filename
+                    if not dest.exists():
+                        dest.write_bytes(content if isinstance(content, bytes) else content.encode())
+                        written.append(dest)
+                        logger.debug("Drive: exported Google Doc → %s", filename)
 
-            elif mime in ("text/plain", "text/markdown"):
-                content = service.files().get_media(fileId=f["id"]).execute()
-                filename = f"{date_prefix}-drive-{safe_name}.md"
-                dest = inbox_dir / filename
-                if not dest.exists():
-                    dest.write_bytes(content if isinstance(content, bytes) else content.encode())
-                    written.append(dest)
-                    logger.debug("Drive: downloaded text file → %s", filename)
+                elif mime in ("text/plain", "text/markdown"):
+                    content = service.files().get_media(fileId=f["id"]).execute()
+                    filename = f"{date_prefix}-drive-{safe_name}.md"
+                    dest = inbox_dir / filename
+                    if not dest.exists():
+                        dest.write_bytes(content if isinstance(content, bytes) else content.encode())
+                        written.append(dest)
+                        logger.debug("Drive: downloaded text file → %s", filename)
 
-            elif mime == (
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            ):
-                content = service.files().get_media(fileId=f["id"]).execute()
-                filename = f"{date_prefix}-drive-{safe_name}.docx"
-                dest = inbox_dir / filename
-                if not dest.exists():
-                    dest.write_bytes(content if isinstance(content, bytes) else content.encode())
-                    written.append(dest)
-                    logger.debug("Drive: downloaded docx → %s", filename)
+                elif mime == (
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ):
+                    content = service.files().get_media(fileId=f["id"]).execute()
+                    filename = f"{date_prefix}-drive-{safe_name}.docx"
+                    dest = inbox_dir / filename
+                    if not dest.exists():
+                        dest.write_bytes(content if isinstance(content, bytes) else content.encode())
+                        written.append(dest)
+                        logger.debug("Drive: downloaded docx → %s", filename)
 
-            else:
-                logger.debug("Drive: skipping unsupported mime type %s for '%s'", mime, name)
+                else:
+                    logger.debug("Drive: skipping unsupported mime type %s for '%s'", mime, name)
+            except Exception:
+                logger.exception("Drive: failed to process file id=%s; skipping", f.get("id"))
 
     except RefreshError:
         logger.warning("Drive: OAuth token refresh failed — skipping Drive ingest")
@@ -234,21 +240,24 @@ def fetch_calendar(
             .execute()
         )
         for evt in response.get("items", []):
-            evt_id = evt.get("id", "unknown")[:12]
-            start = evt.get("start", {})
-            date_str = start.get("dateTime", start.get("date", ""))[:10]
-            summary = evt.get("summary", "meeting")
-            safe_summary = "".join(
-                c if c.isalnum() or c in "-_" else "_" for c in summary
-            )[:40]
-            filename = f"{date_str}-cal-{safe_summary}-{evt_id}.md"
+            try:
+                evt_id = evt.get("id", "unknown")[:12]
+                start = evt.get("start", {})
+                date_str = start.get("dateTime", start.get("date", ""))[:10]
+                summary = evt.get("summary", "meeting")
+                safe_summary = "".join(
+                    c if c.isalnum() or c in "-_" else "_" for c in summary
+                )[:40]
+                filename = f"{date_str}-cal-{safe_summary}-{evt_id}.md"
 
-            dest = inbox_dir / filename
-            if not dest.exists():
-                md_content = _event_to_markdown(evt)
-                dest.write_text(md_content, encoding="utf-8")
-                written.append(dest)
-                logger.debug("Calendar: wrote meeting note → %s", filename)
+                dest = inbox_dir / filename
+                if not dest.exists():
+                    md_content = _event_to_markdown(evt)
+                    dest.write_text(md_content, encoding="utf-8")
+                    written.append(dest)
+                    logger.debug("Calendar: wrote meeting note → %s", filename)
+            except Exception:
+                logger.exception("Calendar: failed to process event id=%s; skipping", evt.get("id"))
 
     except RefreshError:
         logger.warning("Calendar: OAuth token refresh failed — skipping Calendar ingest")

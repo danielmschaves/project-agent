@@ -11,7 +11,7 @@ Attendees: Alice Chen, Bob Kim, Carol Davis
 
 ## What Did Not Go Well
 
-- Partner A spec still outstanding — 29 days since project start, no spec received
+- Partner A spec still outstanding — 20 days since project start, no spec received
 - CI/CD setup deferred from sprint 1 — now blocking sprint 2
 - HIPAA compliance owner still not identified (17 days since raised)
 - Redis license procurement stalled in IT — no movement in 16 days
@@ -28,7 +28,7 @@ Attendees: Alice Chen, Bob Kim, Carol Davis
 - CI/CD pipeline: not set up, unowned
 - K8s staging cluster: not provisioned, unowned
 - Vault production license: budget not approved, no finance contact
-- Partner A spec: overdue by 29 days
+- Partner A spec: due 2026-05-01, not yet received
 
 ## Process Changes
 

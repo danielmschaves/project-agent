@@ -20,8 +20,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-cov>=5.0.0",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
     "mypy>=1.10.0",
     "ruff>=0.5.0",
 ]
@@ -52,9 +52,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-
-[dependency-groups]
-dev = [
-    "pytest>=9.0.3",
-    "pytest-cov>=7.1.0",
-]

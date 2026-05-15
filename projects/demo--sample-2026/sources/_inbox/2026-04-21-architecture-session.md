@@ -27,5 +27,5 @@ Facilitator: Bob Kim
 
 ## Outstanding From Previous Sessions
 
-- Partner A integration spec still not received (was due 2026-05-01, Dave Park has not confirmed)
+- Partner A integration spec due 2026-05-01 — Dave Park has not confirmed commitment
 - Redis license procurement still pending (raised 2026-04-14, no update from Mike Johnson in IT)

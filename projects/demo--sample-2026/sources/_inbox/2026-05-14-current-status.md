@@ -26,7 +26,7 @@ M3 (Partner portal) still on track if Partner A spec received by May 22.
 
 - Bob Kim to complete token revocation fix by 2026-05-16 (already overdue from May 12)
 - Bob Kim to complete rate limit fix by 2026-05-16
-- Alice Chen to confirm auth flow to Partner A by 2026-05-15 (today)
+- Alice Chen to confirm auth flow to Partner A by 2026-05-15
 - Alice Chen to follow up on Partner A full spec with streaming (expected May 22)
 - Alice Chen to schedule data residency/DPA review with legal (no date set)
 - Carol Davis to begin HIPAA compliance evidence pack by 2026-05-20
