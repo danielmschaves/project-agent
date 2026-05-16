@@ -87,6 +87,11 @@ def demo_project(tmp_path: Path) -> tuple[Path, Path, Path, Path, Path]:
     project_dir = tmp_path / "demo--sample-2026"
     shutil.copytree(str(_DEMO_SRC), str(project_dir))
 
+    # Remove any pre-existing reports so the test starts clean
+    reports_dir = project_dir / "reports"
+    if reports_dir.exists():
+        shutil.rmtree(str(reports_dir))
+
     events_path = project_dir / "events.ndjson"
     events_path.touch()
 

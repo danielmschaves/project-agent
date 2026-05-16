@@ -68,7 +68,10 @@ def detect_action_unowned(
         WHERE project_id = '{project_id}'
           AND (status IS NULL OR status NOT IN ('done', 'closed'))
           AND (owner IS NULL OR due IS NULL)
-          AND CAST(ts AS TIMESTAMPTZ) < NOW() - INTERVAL '{unowned_hours} hours'
+          AND (
+            CAST(ts AS TIMESTAMPTZ) < NOW() - INTERVAL '{unowned_hours} hours'
+            OR (due IS NOT NULL AND TRY_CAST(due AS DATE) < CURRENT_DATE)
+          )
     """)
 
     if not rows:
