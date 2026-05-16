@@ -1,0 +1,30 @@
+From: dave.park@example.com
+To: alice.chen@example.com
+Date: Mon, 11 May 2026 08:30:00 +0000
+Subject: Quick check-in — API contract timeline
+
+Alice,
+
+Hope your sprint planning went well Friday.
+
+I want to flag something before it becomes urgent: my board presentation is June 10.
+I need the API contract locked — not just a draft — by June 1 to give our legal team
+time to review. That's a hard constraint from our side.
+
+Current status from my perspective:
+- We returned the questionnaire April 25 ✓
+- We are waiting on the API contract draft (expected May 20 from Bob)
+- We have not yet received clarity on the token scope model
+
+On the scope model: I heard from a mutual contact that you made a decision in sprint
+planning last Friday. Can you confirm what was decided? We need to know if we are
+read-only or if we can request write access for certain endpoints.
+
+I am not trying to escalate — just making sure we're aligned. If May 20 is still the
+target for the draft, I can work with that as long as we can expedite legal review.
+
+One more thing: Partner C. I know this is sensitive, but they are a competitor of ours
+in one segment. If they launch on the same platform with the same capabilities at the
+same time, that is a problem for us. Do you have any timeline clarity on their onboarding?
+
+Dave

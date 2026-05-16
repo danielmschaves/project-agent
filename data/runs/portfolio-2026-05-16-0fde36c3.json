@@ -1,0 +1,12 @@
+{
+  "portfolio_run_id": "0fde36c3",
+  "date": "2026-05-16",
+  "project_ids": [
+    "demo--sample-2026"
+  ],
+  "per_project_run_ids": {
+    "demo--sample-2026": "45f9a5f3"
+  },
+  "total_signals": 0,
+  "total_errors": 0
+}

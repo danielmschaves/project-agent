@@ -12,6 +12,7 @@ from typing import Any
 from project_agent import events as events_api
 from project_agent import git, llm, projects, render, warehouse
 from project_agent.ingest import inbox, mcp as mcp_ingest
+from project_agent.render import PortfolioProject
 from project_agent.schemas import (
     ActionAddedPayload,
     BlockerAddedPayload,
@@ -463,12 +464,14 @@ def run_render(
     project_dir: Path,
     signals: list[Signal],
     run_id: str,
+    design_system_dir: Path | None = None,
 ) -> StageResult:
-    """Stage 5 — render MD status report (PRD §8.5, MVP)."""
+    """Stage 5 — render MD + HTML status reports (PRD §8.5, Phase 0.5)."""
     start = time.monotonic()
     try:
-        report_path = render.render_status(project_dir, signals, run_id)
-        logger.info("Render complete: %s", report_path)
+        render.render_status(project_dir, signals, run_id)
+        render.render_html(project_dir, signals, run_id, design_system_dir=design_system_dir)
+        logger.info("Render complete: %s (MD + HTML)", project_id)
     except Exception:
         logger.exception("Render stage failed")
         elapsed = int((time.monotonic() - start) * 1000)
@@ -482,6 +485,37 @@ def run_render(
     elapsed = int((time.monotonic() - start) * 1000)
     return StageResult(
         name="render",
+        status="ok",
+        duration_ms=elapsed,
+        counts={"reports_written": 2, "errors": 0},
+    )
+
+
+def run_render_portfolio(
+    project_summaries: list[PortfolioProject],
+    output_dir: Path,
+    design_system_dir: Path | None = None,
+) -> StageResult:
+    """Stage 5 (portfolio) — render the cross-project HTML dashboard."""
+    start = time.monotonic()
+    try:
+        html_path = render.render_portfolio_html(
+            project_summaries, output_dir, design_system_dir=design_system_dir
+        )
+        logger.info("Portfolio HTML written: %s", html_path)
+    except Exception:
+        logger.exception("Portfolio render stage failed")
+        elapsed = int((time.monotonic() - start) * 1000)
+        return StageResult(
+            name="render_portfolio",
+            status="error",
+            duration_ms=elapsed,
+            counts={"reports_written": 0, "errors": 1},
+            error="See logs for details",
+        )
+    elapsed = int((time.monotonic() - start) * 1000)
+    return StageResult(
+        name="render_portfolio",
         status="ok",
         duration_ms=elapsed,
         counts={"reports_written": 1, "errors": 0},

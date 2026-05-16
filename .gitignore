@@ -25,8 +25,9 @@ data/cache/
 ARCHITECTURE.md
 REVIEW_NOTES.md
 
-# Claude Code local settings (machine-specific)
+# Claude Code local settings and worktrees (machine-specific)
 .claude/settings.local.json
+.claude/worktrees/
 
 # OS
 .DS_Store

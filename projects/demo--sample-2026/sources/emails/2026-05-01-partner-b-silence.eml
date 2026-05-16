@@ -1,0 +1,28 @@
+From: alice.chen@example.com
+To: sarah.lee@partnerb-health.com
+CC: bob.kim@example.com
+Date: Fri, 01 May 2026 10:00:00 +0000
+Subject: Re: Alpha API Platform — Partner Onboarding Questionnaire [FOLLOW UP]
+
+Hi Sarah,
+
+Following up on the questionnaire sent April 18. We have not received a response yet.
+
+The questionnaire deadline was May 1 (today). We need this information to:
+1. Size the auth service for Partner B's expected call volume
+2. Scope the HIPAA compliance review correctly
+3. Confirm whether a BAA is required before we share staging credentials
+
+I am also sending the BAA draft separately today for your legal team's review.
+
+If there are blockers on your end, please let me know — I would rather surface them now
+than discover them at M2.
+
+Can you confirm receipt and give me an ETA on the response?
+
+Actions:
+- Sarah Lee: return questionnaire by 2026-05-07 (extended deadline)
+- Alice Chen: send BAA draft by 2026-05-02 ← pending
+
+Thanks,
+Alice

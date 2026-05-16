@@ -1,0 +1,81 @@
+{
+  "run_id": "d3e82343",
+  "started_at": "2026-05-14T23:17:27.463501Z",
+  "ended_at": "2026-05-14T23:17:32.059971Z",
+  "project_ids": [
+    "demo--sample-2026"
+  ],
+  "stages": [
+    {
+      "name": "ingest",
+      "status": "ok",
+      "duration_ms": 8,
+      "counts": {
+        "sources_seen": 0,
+        "sources_new": 0,
+        "errors": 0
+      },
+      "cost_usd": null,
+      "error": null
+    },
+    {
+      "name": "parse",
+      "status": "ok",
+      "duration_ms": 14,
+      "counts": {
+        "sources_parsed": 0,
+        "sources_skipped": 22,
+        "events_emitted": 0,
+        "errors": 0
+      },
+      "cost_usd": null,
+      "error": null
+    },
+    {
+      "name": "warehouse",
+      "status": "ok",
+      "duration_ms": 4453,
+      "counts": {
+        "events_loaded": 188,
+        "errors": 0
+      },
+      "cost_usd": null,
+      "error": null
+    },
+    {
+      "name": "analyze",
+      "status": "ok",
+      "duration_ms": 96,
+      "counts": {
+        "signals_new": 2,
+        "signals_skipped": 1,
+        "errors": 0
+      },
+      "cost_usd": null,
+      "error": null
+    },
+    {
+      "name": "render",
+      "status": "ok",
+      "duration_ms": 12,
+      "counts": {
+        "reports_written": 1,
+        "errors": 0
+      },
+      "cost_usd": null,
+      "error": null
+    },
+    {
+      "name": "commit",
+      "status": "skipped",
+      "duration_ms": 0,
+      "counts": {
+        "errors": 0
+      },
+      "cost_usd": null,
+      "error": null
+    }
+  ],
+  "errors": [],
+  "total_cost_usd": 0.0
+}

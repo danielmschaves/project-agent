@@ -1,0 +1,34 @@
+From: bob.kim@example.com
+To: alice.chen@example.com
+Date: Thu, 07 May 2026 17:45:00 +0000
+Subject: Status update — auth service + overdue items
+
+Alice,
+
+Quick status update before tomorrow's standup:
+
+Auth service progress:
+- Core JWT issuance: 100% done, tests passing
+- Token refresh flow: 80% done, edge cases remaining
+- Partner scope model: 60% done — Dave's question about read-only vs read-write scopes
+  is blocking the last 20%. Need the token scope decision by May 9.
+- Integration with Kong plugin: not started. Blocked on scope model.
+
+Overdue items (I know, I owe you these):
+1. Circuit-breaker design doc: I have a draft in my head but haven't had time to write
+   it up. Will do this weekend. You'll have it Monday May 11.
+2. JWT key rotation runbook: starting this week. Will have it by May 20 as committed.
+
+API contract draft for Partner A (BKL-007):
+I can have a v0.1 API contract to Dave by May 16, not May 20. Want to give him
+buffer before the June 10 board meeting. But I need the scope model decision first.
+
+New hire:
+Priya (Backend Eng #2) starts Monday. I'll onboard her to the Redis layer — that
+should unstick BKL-001 and BKL-003.
+
+One thing I need from you:
+The token scope model decision needs to happen in the May 9 sync. I cannot proceed
+without it. Can you add it to the agenda?
+
+Bob

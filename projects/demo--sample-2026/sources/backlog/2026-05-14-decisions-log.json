@@ -1,0 +1,72 @@
+{
+  "project_id": "demo--sample-2026",
+  "last_updated": "2026-05-14",
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "date": "2026-04-15",
+      "title": "API Gateway: Kong selected over AWS API Gateway",
+      "decided_by": "Bob Kim",
+      "rationale": "Vendor independence, richer plugin ecosystem, lower long-term lock-in risk. AWS API Gateway would couple us to AWS IAM auth model incompatible with multi-cloud partner requirements.",
+      "status": "final"
+    },
+    {
+      "id": "DEC-002",
+      "date": "2026-04-15",
+      "title": "Auth: JWT RS256 with 1-hour access tokens and 30-day refresh",
+      "decided_by": "Bob Kim",
+      "rationale": "RS256 allows public-key verification by partners without sharing secrets. Short-lived tokens limit breach window. 30-day refresh balances UX against revocation latency.",
+      "status": "final"
+    },
+    {
+      "id": "DEC-003",
+      "date": "2026-04-15",
+      "title": "Rate limiting: Redis-backed sliding window per partner",
+      "decided_by": "Bob Kim",
+      "rationale": "Sliding window more accurate than fixed window for burst detection. Per-partner quotas isolate noisy neighbors. Redis chosen for low latency.",
+      "status": "final",
+      "open_questions": "Redis SPOF — circuit-breaker design required (RSK-002)"
+    },
+    {
+      "id": "DEC-004",
+      "date": "2026-04-15",
+      "title": "Observability: Prometheus + Grafana + Jaeger",
+      "decided_by": "Bob Kim",
+      "rationale": "Standard open-source stack. Jaeger for distributed tracing across gateway → auth → partner callbacks. Avoids vendor lock-in on observability.",
+      "status": "final"
+    },
+    {
+      "id": "DEC-005",
+      "date": "2026-04-28",
+      "title": "Redis circuit-breaker: Bob to draft design by 2026-04-30",
+      "decided_by": "Alice Chen",
+      "rationale": "Arch review surfaced Redis SPOF. Design needed before Redis goes to staging.",
+      "status": "overdue",
+      "resolution": "Design completed 2026-05-14 (14 days late)"
+    },
+    {
+      "id": "DEC-006",
+      "date": "2026-05-09",
+      "title": "Token scope model: two tiers (partner:read, partner:write)",
+      "decided_by": "Alice Chen",
+      "rationale": "Simplest model that satisfies Partner A and Partner B requirements. Read-only partners default to read scope; write requires explicit grant at onboarding. Avoids per-endpoint ACL complexity.",
+      "status": "final"
+    },
+    {
+      "id": "DEC-007",
+      "date": "2026-05-09",
+      "title": "Redis → AWS ElastiCache migration for at-rest encryption",
+      "decided_by": "Bob Kim + Alice Chen",
+      "rationale": "ElastiCache supports KMS encryption natively. Avoids Redis Enterprise licensing cost (~$18k/yr). Required for HIPAA compliance (PHI-adjacent rate limiting data).",
+      "status": "in-progress"
+    },
+    {
+      "id": "DEC-008",
+      "date": "2026-05-12",
+      "title": "Partner B deferred to Phase 2 if no response by May 19",
+      "decided_by": "Alice Chen",
+      "rationale": "Team cannot hold HIPAA scope open indefinitely. May 19 gives two weeks post-questionnaire deadline. Deferral allows M2 to proceed without Partner B blocking auth service staging.",
+      "status": "pending — awaiting Partner B response"
+    }
+  ]
+}

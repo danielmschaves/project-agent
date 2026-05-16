@@ -1,0 +1,19 @@
+id,title,owner,status,priority,due,notes
+BKL-001,Implement rate limiting Redis layer,bob.kim,in-progress,high,2026-05-20,Migrating to ElastiCache; Priya assisting
+BKL-002,Partner onboarding portal UI,unassigned,not-started,high,2026-06-15,Blocked on frontend hire
+BKL-003,Load testing script setup,priya.nair,not-started,medium,2026-06-01,Assigned to new hire Priya — starts week 2
+BKL-004,Observability dashboards,unassigned,not-started,medium,2026-06-20,Needs backend eng to own
+BKL-005,HIPAA compliance checklist for Partner B,,not-started,high,2026-05-31,Blocked on Partner B questionnaire response
+BKL-006,Redis circuit-breaker design doc,bob.kim,done,high,2026-04-30,Completed 2026-05-14 (14 days late)
+BKL-007,API contract v1 draft,bob.kim,not-started,high,2026-05-20,Must start today per standup
+BKL-008,Partner A integration testing,dave.park,not-started,medium,2026-06-20,Waiting on API contract first
+BKL-009,Runbook: JWT key rotation,,not-started,high,2026-05-20,No owner assigned — critical for security sign-off
+BKL-010,Disaster recovery plan,,not-started,low,2026-07-01,Low priority until M3
+BKL-011,ElastiCache migration (Redis replacement),bob.kim,in-progress,high,2026-05-23,Blocked on Priya AWS credentials (IT ticket open)
+BKL-012,PHI error sanitization,carol.davis,not-started,high,2026-05-23,Required before Partner B gets staging access
+BKL-013,Partner portal design doc,alice.chen,in-progress,high,2026-05-16,Alice starting today solo
+BKL-014,Token scope model implementation,bob.kim,in-progress,high,2026-05-20,Decision made May 9: read/write tiers
+BKL-015,Kong plugin for tenant isolation,bob.kim,not-started,high,2026-05-31,T7 mitigation from threat model
+BKL-016,BAA draft to Partner B,,not-started,high,2026-05-02,Overdue — no owner currently
+BKL-017,Breach notification process definition,carol.davis,not-started,medium,2026-05-31,Required for HIPAA
+BKL-018,Partner C technical contact confirmation,,not-started,medium,2026-04-22,Overdue — Partner C unresponsive

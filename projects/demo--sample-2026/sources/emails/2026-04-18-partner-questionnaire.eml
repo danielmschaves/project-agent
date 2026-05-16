@@ -1,0 +1,31 @@
+From: alice.chen@example.com
+To: dave.park@example.com; sarah.lee@partnerb-health.com; logistics@partnerc.com
+Date: Fri, 18 Apr 2026 11:00:00 +0000
+Subject: Alpha API Platform — Partner Onboarding Questionnaire
+
+Hi Dave, Sarah, and Partner C team,
+
+Please find attached the partner onboarding questionnaire. We need responses by May 1
+to stay on track for the M2 milestone (auth service in staging, May 31).
+
+Key questions we need answered:
+1. Expected API call volume (daily peak, monthly total)
+2. Data classification (PII/PHI present in API payloads?)
+3. Auth preference: client credentials, PKCE, or token exchange?
+4. Any existing IP allowlist requirements?
+5. SLA expectations (uptime, error rate thresholds)?
+
+Please return the questionnaire by replying to this email.
+
+A few reminders:
+- Partner B: we will send the BAA draft by April 28 for legal review
+- Partner A (Dave): Bob will have the API contract draft by May 20
+- Partner C: please confirm technical contact by April 22
+
+Actions:
+- Dave Park: return questionnaire by 2026-05-01
+- Sarah Lee (Partner B): return questionnaire by 2026-05-01
+- Partner C: confirm technical contact by 2026-04-22
+
+Thanks,
+Alice

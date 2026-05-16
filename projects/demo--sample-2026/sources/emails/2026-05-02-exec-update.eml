@@ -1,0 +1,48 @@
+From: alice.chen@company.com
+To: marcus.reid@company.com
+Date: Sat, 02 May 2026 10:00:00 +0000
+Subject: Weekly Status — Alpha API Platform (Week 3)
+
+Marcus,
+
+Status: YELLOW (two blockers unresolved past SLA)
+
+## Progress This Week
+
+- Auth service JWT implementation: 60% complete (Bob Kim)
+- Threat model: first draft in review (Carol Davis)
+- Partner portal: design kickoff scheduled for next week
+
+## Actions Completed
+
+- Architecture decisions documented (ADR-001, ADR-002 drafted)
+- Partner B HIPAA pre-assessment call scheduled for May 6
+
+## Open Actions (overdue)
+
+- Partner A integration spec: 32 days outstanding, spec not received.
+  I've now escalated to Dave Park's manager. Waiting on response.
+
+- HIPAA compliance lead: 22 days without an owner. Proposing we assign Carol Davis
+  as interim lead pending formal hire. Need your approval to proceed.
+
+- CI/CD pipeline setup: 18 days, no owner. Recommending we bring in DevOps contractor
+  for one week. Budget impact: ~$8K.
+
+- Redis license: IT procurement stalled. Mike Johnson is unresponsive.
+  Can you escalate via CTO channel?
+
+## Risks Escalated
+
+- If Partner A spec not received by May 8, partner portal is at risk for M3 (July 1).
+  This is now a RED risk item.
+
+- Key person risk: Bob Kim is single point of failure on auth service.
+  Proposing Priya Nair shadow for the next 2 weeks.
+
+Actions I need from you:
+1. Approve Carol Davis as interim HIPAA lead (by Monday May 4)
+2. Approve DevOps contractor for CI/CD (by Monday May 4)
+3. Escalate Redis procurement to Mike Johnson's director
+
+Alice
