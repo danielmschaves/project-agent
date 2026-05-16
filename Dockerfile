@@ -24,5 +24,10 @@ RUN uv sync --frozen --all-extras --no-install-project
 COPY . .
 RUN uv sync --frozen --all-extras
 
+RUN useradd --create-home --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app /opt/venv
+
+USER appuser
+
 ENTRYPOINT ["uv", "run"]
 CMD ["python", "-m", "pipeline", "--help"]

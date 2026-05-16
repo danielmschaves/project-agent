@@ -328,6 +328,10 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
     from datetime import date as _date
     today = _date.today().isoformat()
     portfolio_run_id = uuid.uuid4().hex[:8]
+    per_project_errors = sum(
+        sum(s.counts.get("errors", 0) for s in rl.stages)
+        for _, rl, _ in portfolio_results
+    )
     summary = {
         "portfolio_run_id": portfolio_run_id,
         "date": today,
@@ -337,10 +341,21 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
             sum(s.counts.get("signals_new", 0) for s in rl.stages if s.name == "analyze")
             for _, rl, _ in portfolio_results
         ),
-        "total_errors": sum(
-            sum(s.counts.get("errors", 0) for s in rl.stages)
-            for _, rl, _ in portfolio_results
+        "total_errors": (
+            per_project_errors
+            + portfolio_render.counts.get("errors", 0)
+            + commit_result.counts.get("errors", 0)
         ),
+        "stages": {
+            "portfolio_render": {
+                "status": portfolio_render.status,
+                "counts": portfolio_render.counts,
+            },
+            "commit": {
+                "status": commit_result.status,
+                "counts": commit_result.counts,
+            },
+        },
     }
     runs_dir = data_dir / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -348,7 +363,7 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
         json.dumps(summary, indent=2), encoding="utf-8"
     )
 
-    total_errors = summary["total_errors"] + commit_result.counts.get("errors", 0)
+    total_errors = summary["total_errors"]
     print(f"\nPortfolio complete: {len(portfolio_results)} project(s)  errors={total_errors}")
     return 0 if total_errors == 0 else 1
 

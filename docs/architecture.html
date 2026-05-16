@@ -557,7 +557,7 @@ graph TB
     PM["👤 PM Review + Merge"]
 
     Sources --> Pipeline
-    Pipeline <--> State
+    Pipeline &lt;--&gt; State
     Pipeline --> PR
     PR --> PM
     PM -->|merge| State
