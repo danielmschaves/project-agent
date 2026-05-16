@@ -17,6 +17,24 @@ data/warehouse.duckdb
 # LLM response cache (large, machine-local)
 data/cache/
 
+# Pipeline runtime outputs — never commit on dev branches
+# (pipeline uses git add -f on auto/* branches for project outputs)
+data/*.ndjson
+data/runs/*.json
+
+# Per-project generated outputs
+projects/*/events.ndjson
+projects/*/project.md
+projects/*/reports/
+
+# Ingest/parse state manifests
+projects/*/sources/manifest.json
+projects/*/sources/parse_manifest.json
+
+# Portfolio reports
+reports/*.html
+reports/*.md
+
 # IDE
 .vscode/
 .idea/
@@ -34,4 +52,3 @@ REVIEW_NOTES.md
 Thumbs.db
 
 .pytest_cache/
-design-system/

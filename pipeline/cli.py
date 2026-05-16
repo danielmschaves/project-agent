@@ -24,11 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 def _discover_projects(projects_dir: Path) -> list[str]:
-    """Return sorted project IDs — subdirs of projects_dir that contain project.md."""
+    """Return sorted project IDs — subdirs of projects_dir that contain project.notes.md.
+
+    Uses project.notes.md (PM-owned fixture, always committed) rather than
+    project.md (bot-generated, gitignored) so discovery works on a fresh clone.
+    """
     return sorted(
         d.name
         for d in projects_dir.iterdir()
-        if d.is_dir() and (d / "project.md").exists()
+        if d.is_dir() and (d / "project.notes.md").exists()
     )
 
 

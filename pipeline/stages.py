@@ -564,7 +564,13 @@ def run_commit(
             f"Project: {project_id}\n"
             f"Stages: {', '.join(s.name for s in run_log.stages)}"
         )
-        git.commit_all(repo_root, commit_msg)
+        git.commit_all(repo_root, commit_msg, force_paths=[
+            project_dir / "events.ndjson",
+            project_dir / "project.md",
+            project_dir / "reports",
+            project_dir / "sources" / "manifest.json",
+            project_dir / "sources" / "parse_manifest.json",
+        ])
 
         pr_body = (
             f"## Summary\n\n"
@@ -637,7 +643,18 @@ def run_commit_portfolio(
             f"{total_signals} signal(s)\n\n"
             f"Projects: {', '.join(pid for pid, _ in project_results)}"
         )
-        git.commit_all(repo_root, commit_msg)
+        projects_root = repo_root / "projects"
+        force: list[Path] = [repo_root / "reports"]
+        for pid, _ in project_results:
+            pd = projects_root / pid
+            force += [
+                pd / "events.ndjson",
+                pd / "project.md",
+                pd / "reports",
+                pd / "sources" / "manifest.json",
+                pd / "sources" / "parse_manifest.json",
+            ]
+        git.commit_all(repo_root, commit_msg, force_paths=force)
 
         pr_body = _build_portfolio_pr_body(project_results, today)
         pr_title = (

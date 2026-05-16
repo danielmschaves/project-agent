@@ -1,0 +1,237 @@
+/* =================================================================
+   PROJECT AGENT — DESIGN TOKENS  v0.4
+   Single source of truth. Bootstrap a new report by importing this.
+   ================================================================= */
+
+:root {
+  /* -----------------------------------------------------------------
+     1 · COLOR — surfaces
+     ---------------------------------------------------------------*/
+  --bg-deep:        #08090F;   /* page ground, default */
+  --bg-surface:     #0C0E16;   /* primary content surface */
+  --bg-elevated:    #131622;   /* cards, raised panels */
+  --bg-panel:       #1A1E2C;   /* inset wells, code blocks, tabular rows */
+  --bg-overlay:     rgba(8, 9, 15, 0.72);
+
+  /* COLOR — text */
+  --text-primary:   #E8E3D3;   /* warm off-white, body */
+  --text-secondary: rgba(232, 227, 211, 0.78);
+  --text-muted:     rgba(232, 227, 211, 0.54);
+  --text-faint:     rgba(232, 227, 211, 0.32);
+  --text-inverse:   #08090F;
+
+  /* COLOR — borders */
+  --border:         rgba(232, 227, 211, 0.08);
+  --border-bright:  rgba(232, 227, 211, 0.14);
+  --border-strong:  rgba(232, 227, 211, 0.24);
+
+  /* -----------------------------------------------------------------
+     2 · COLOR — accents
+     Each accent: base / soft (fill bg) / border (stroke) / strong (hover)
+     ---------------------------------------------------------------*/
+  --cyan:           #5EEAD4;
+  --cyan-soft:      rgba(94, 234, 212, 0.10);
+  --cyan-border:    rgba(94, 234, 212, 0.32);
+  --cyan-strong:    #7DF0DC;
+
+  --amber:          #FBBF24;
+  --amber-soft:     rgba(251, 191, 36, 0.10);
+  --amber-border:   rgba(251, 191, 36, 0.32);
+  --amber-strong:   #FCC94A;
+
+  --coral:          #F87171;
+  --coral-soft:     rgba(248, 113, 113, 0.10);
+  --coral-border:   rgba(248, 113, 113, 0.32);
+  --coral-strong:   #FA8888;
+
+  --sage:           #86EFAC;
+  --sage-soft:      rgba(134, 239, 172, 0.10);
+  --sage-border:    rgba(134, 239, 172, 0.32);
+  --sage-strong:    #9FF3BD;
+
+  --sky:            #7DD3FC;
+  --sky-soft:       rgba(125, 211, 252, 0.10);
+  --sky-border:     rgba(125, 211, 252, 0.32);
+  --sky-strong:     #9CDDFC;
+
+  --violet:         #C4B5FD;
+  --violet-soft:    rgba(196, 181, 253, 0.10);
+  --violet-border:  rgba(196, 181, 253, 0.32);
+  --violet-strong:  #D2C6FE;
+
+  /* -----------------------------------------------------------------
+     3 · COLOR — semantic status (pair with iconography)
+     ---------------------------------------------------------------*/
+  --status-green:        var(--sage);
+  --status-green-soft:   var(--sage-soft);
+  --status-green-border: var(--sage-border);
+
+  --status-yellow:        var(--amber);
+  --status-yellow-soft:   var(--amber-soft);
+  --status-yellow-border: var(--amber-border);
+
+  --status-red:        var(--coral);
+  --status-red-soft:   var(--coral-soft);
+  --status-red-border: var(--coral-border);
+
+  /* Overlays — combined with a status color, not standalone */
+  --status-locked-stroke:  var(--text-secondary);   /* hatch pattern uses this */
+  --status-manual-mark:    var(--text-secondary);   /* solid dot in cell corner */
+  --status-derived-mark:   var(--text-faint);       /* hollow dot — system inferred */
+
+  /* Severity */
+  --severity-high:    var(--coral);
+  --severity-medium:  var(--amber);
+  --severity-low:     var(--sky);
+
+  /* Trend */
+  --trend-up:    var(--sage);
+  --trend-down:  var(--coral);
+  --trend-flat:  var(--text-muted);
+
+  /* -----------------------------------------------------------------
+     4 · TYPOGRAPHY
+     ---------------------------------------------------------------*/
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Display scale — Fraunces */
+  --type-hero:           clamp(48px, 7vw, 88px);
+  --type-page-title:     clamp(36px, 4.4vw, 56px);
+  --type-section-title:  clamp(26px, 2.6vw, 34px);
+  --type-subsection:     clamp(18px, 1.6vw, 22px);
+
+  /* Body scale — JetBrains Mono */
+  --type-lead:     17px;
+  --type-body:     14.5px;
+  --type-caption:  12.5px;
+  --type-micro:    11px;
+
+  /* Line heights */
+  --lh-display: 1.06;
+  --lh-section: 1.18;
+  --lh-prose:   1.62;
+  --lh-ui:      1.4;
+  --lh-tight:   1.2;
+
+  /* Weights */
+  --fw-display-light:  300;
+  --fw-display:        400;
+  --fw-display-bold:   500;
+  --fw-body:           400;
+  --fw-body-strong:    500;
+  --fw-body-bold:      600;
+
+  /* Letter spacing */
+  --ls-display:  -0.018em;
+  --ls-body:     -0.005em;
+  --ls-label:    0.10em;     /* uppercase eyebrows */
+
+  /* -----------------------------------------------------------------
+     5 · SPACING SCALE
+     Intra-component (1–3) · Between-component (4–7) · Between-section (8–10)
+     ---------------------------------------------------------------*/
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-7:  32px;
+  --space-8:  40px;
+  --space-9:  56px;
+  --space-10: 72px;
+  --space-11: 96px;
+
+  /* -----------------------------------------------------------------
+     6 · GEOMETRY
+     ---------------------------------------------------------------*/
+  --radius-sm:  2px;   /* pills, indicator cells */
+  --radius-md:  4px;   /* cards, panels */
+  --radius-lg:  8px;   /* heroes, dialog, large panels */
+
+  --border-w:   1px;
+
+  /* Shadows — minimal, depth from typography & spacing */
+  --shadow-pop:    0 1px 0 rgba(232, 227, 211, 0.04) inset, 0 12px 32px -16px rgba(0, 0, 0, 0.6);
+  --shadow-focus:  0 0 0 1px var(--cyan), 0 0 0 4px rgba(94, 234, 212, 0.18);
+
+  /* -----------------------------------------------------------------
+     7 · MOTION
+     ---------------------------------------------------------------*/
+  --dur-fast:   120ms;
+  --dur-base:   220ms;
+  --dur-slow:   600ms;
+
+  --ease-out:   cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in:    cubic-bezier(0.4, 0, 1, 1);
+  --ease-std:   cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* -----------------------------------------------------------------
+     8 · GRID
+     ---------------------------------------------------------------*/
+  --content-max-spec:   1280px;   /* editorial / spec artifacts */
+  --content-max-ops:    1440px;   /* operational reports */
+  --gutter-spec:        56px;
+  --gutter-ops:         40px;
+  --sidebar-spec:       240px;
+  --sidebar-ops:        240px;
+
+  /* Breakpoints — declared here for reference; @media uses literals */
+  --bp-mobile:  500px;
+  --bp-tablet:  900px;
+  --bp-wide:    1000px;
+}
+
+/* =================================================================
+   LIGHT MODE — operational reports only (spec artifacts stay dark)
+   Apply via <body class="theme-light"> or <section class="theme-light">
+   ================================================================= */
+.theme-light {
+  --bg-deep:        #F5F2E8;
+  --bg-surface:     #FBF8EE;
+  --bg-elevated:    #FFFFFF;
+  --bg-panel:       #F0ECDF;
+  --bg-overlay:     rgba(245, 242, 232, 0.78);
+
+  --text-primary:   #14161E;
+  --text-secondary: rgba(20, 22, 30, 0.78);
+  --text-muted:     rgba(20, 22, 30, 0.54);
+  --text-faint:     rgba(20, 22, 30, 0.30);
+  --text-inverse:   #FBF8EE;
+
+  --border:         rgba(20, 22, 30, 0.10);
+  --border-bright:  rgba(20, 22, 30, 0.18);
+  --border-strong:  rgba(20, 22, 30, 0.32);
+
+  /* Accents darkened ~14% to hit AAA on cream */
+  --cyan:           #0F8F7D;
+  --cyan-soft:      rgba(15, 143, 125, 0.10);
+  --cyan-border:    rgba(15, 143, 125, 0.36);
+  --cyan-strong:    #0B6E5F;
+
+  --amber:          #B27708;
+  --amber-soft:     rgba(178, 119, 8, 0.10);
+  --amber-border:   rgba(178, 119, 8, 0.36);
+  --amber-strong:   #8C5C04;
+
+  --coral:          #C53030;
+  --coral-soft:     rgba(197, 48, 48, 0.10);
+  --coral-border:   rgba(197, 48, 48, 0.36);
+  --coral-strong:   #9B2424;
+
+  --sage:           #2F8F4E;
+  --sage-soft:      rgba(47, 143, 78, 0.10);
+  --sage-border:    rgba(47, 143, 78, 0.36);
+  --sage-strong:    #1F6B38;
+
+  --sky:            #1E6FAA;
+  --sky-soft:       rgba(30, 111, 170, 0.10);
+  --sky-border:     rgba(30, 111, 170, 0.36);
+  --sky-strong:     #154C75;
+
+  --violet:         #6B53C9;
+  --violet-soft:    rgba(107, 83, 201, 0.10);
+  --violet-border:  rgba(107, 83, 201, 0.36);
+  --violet-strong:  #4B3B96;
+}
