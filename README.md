@@ -11,14 +11,42 @@ cp .env.example .env
 # 2. Build the Docker image
 docker compose build
 
-# 3. Run the full pipeline for a single project
-docker compose run --rm pipeline python -m pipeline run --project <id>
+# 3. Run the demo project (synthetic 30-day corpus included)
+docker compose run --rm pipeline python -m pipeline run --project demo--sample-2026
 
 # 4. Run the portfolio pipeline (all projects, one PR)
 docker compose run --rm pipeline python -m pipeline portfolio
 
 # 5. Run tests
 docker compose run --rm pipeline pytest
+```
+
+## Using with your own data
+
+1. **Create a project directory** following the `<client>--<project>` convention:
+   ```
+   projects/acme--website-relaunch/
+   ```
+
+2. **Create `project.notes.md`** — this PM-owned file is the discovery anchor. The portfolio command finds projects by its presence.
+   ```markdown
+   # Acme — Website Relaunch
+   <!-- PM notes, goals, context. Pipeline never writes here. -->
+   ```
+
+3. **Drop source files** into `projects/acme--website-relaunch/sources/_inbox/`. Supported types: `.md`, `.txt`, `.eml`, `.csv`, `.json`.
+
+4. **Run the pipeline:**
+   ```bash
+   docker compose run --rm pipeline python -m pipeline run --project acme--website-relaunch
+   ```
+   The pipeline opens a PR on an `auto/<date>` branch. Review and merge it — that's the HITL gate.
+
+> **Data in git:** Runtime outputs (`project.md`, `events.ndjson`, `reports/`) are gitignored on dev branches. The pipeline force-adds them on `auto/<date>` branches so they land in the HITL PR. Nothing generated ever appears in your feature branches.
+
+To reset the demo project back to its original state:
+```bash
+uv run python scripts/reset_demo.py
 ```
 
 ## Architecture
@@ -61,9 +89,16 @@ Visual references (open locally):
 src/project_agent/   ← package — all state mutation goes through here
 pipeline/            ← thin orchestration glue (run + portfolio commands)
 prompts/             ← versioned Claude API prompts
-projects/<id>/       ← per-project source files, events.ndjson, and reports/
-data/                ← warehouse.duckdb, runs/, cache/
-design-system/       ← tokens.css, system.css, Portfolio Dashboard.html (CSS source)
+projects/<id>/
+  project.notes.md   ← PM-owned, always committed (discovery anchor)
+  sources/           ← drop source files here; _inbox/ is the entry point
+  reports/           ← gitignored; pipeline commits on auto/* branches
+  events.ndjson      ← gitignored; pipeline commits on auto/* branches
+  project.md         ← gitignored; pipeline commits on auto/* branches
+data/                ← warehouse.duckdb (gitignored), runs/ (gitignored), cache/ (gitignored)
+design-system/       ← tokens.css, system.css, reference HTML — use these when extending reports
+reports/             ← portfolio HTML; gitignored on dev branches
+scripts/             ← reset_demo.py and other maintenance helpers
 tests/               ← pytest (unit / integration / idempotence / boundary)
-docs/                ← status.html and other reference docs
+docs/                ← rendered architecture and field manual HTML
 ```

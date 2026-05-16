@@ -263,6 +263,8 @@ Each signal has a JSON spec under `data/schemas/signals/<type>.json`. SQL detect
 - **Expecting `_inbox/` to retain skipped files.** `scan_inbox` now deletes files from `_inbox/` when their `source_hash` is already in `manifest.json`. This keeps the inbox clean across MCP re-fetches; don't rely on skipped files persisting there.
 - **Hand-editing `events.ndjson`.** Append-only, package-mediated. Use `event_retracted` events instead.
 - **Forgetting the operations log.** Each stage must update `data/runs/<run_id>.json`.
+- **Committing pipeline outputs to a dev branch.** `project.md`, `events.ndjson`, `reports/`, `manifest.json`, `parse_manifest.json`, and `data/runs/*.json` are all gitignored. On dev branches they stay local. The pipeline's `run_commit` / `run_commit_portfolio` stages use `git add -f` (via `project_agent.git.commit_all(force_paths=[...])`) to include them only on `auto/<date>` branches. Don't bypass this with `git add -A` outside of the package.
+- **Using `project.md` as the project discovery anchor.** `_discover_projects` checks for `project.notes.md`, not `project.md`. `project.md` is gitignored and won't exist on a fresh clone. Always create `project.notes.md` first when adding a new project.
 
 ---
 
@@ -277,6 +279,9 @@ Each signal has a JSON spec under `data/schemas/signals/<type>.json`. SQL detect
 - **`Event.payload` and `actor` are discriminated unions.** No `dict[str, Any]`.
 - **No ABCs, no plugin systems, no DI containers.** Pure functions and pydantic. `typing.Protocol` if two concrete impls share a shape.
 - **Project ID convention:** `<client>--<project>` until decided (PRD §13.1).
+- **Runtime outputs are gitignored; pipeline uses `git add -f` to commit them.** All generated files (`project.md`, `events.ndjson`, `reports/`, manifests, run logs) are in `.gitignore` so dev branches stay clean. `project_agent.git.commit_all(force_paths=[...])` adds them explicitly on `auto/<date>` branches. This is intentional — do not remove these gitignore rules.
+- **Project discovery uses `project.notes.md`.** `pipeline portfolio` finds projects via `_discover_projects`, which checks for `project.notes.md` (PM-owned, always committed) rather than `project.md` (bot-generated, gitignored). A fresh clone will have `project.notes.md` but not `project.md`; that is the correct state.
+- **`design-system/` is tracked in git.** `tokens.css`, `system.css`, and the reference HTML files are committed so teammates can reference and extend the design language when building new report layouts.
 
 **Open and deferred** (ask first, don't decide unilaterally): outbox storage policy, cron host & threat model, source artifact size, LLM cost cap policy, Δ7d snapshot strategy for indicator grid. See PRD §13.
 
@@ -300,10 +305,10 @@ All delegate to `python -m pipeline ...` under the hood.
 1. Don't fix it speculatively. Ask the maintainer first.
 2. Run the test suite. Read the failures.
 3. Check `git log` and recent PR descriptions for context.
-4. Check `data/events.ndjson` for the last few events.
-5. If `data/` looks corrupt: restore from git history (`git checkout <previous-commit> -- data/`). Do not repair manually.
+4. Check `projects/<id>/events.ndjson` for the last few events (per-project log; not tracked on dev branches).
+5. If project state looks corrupt: the source files and `project.notes.md` are always in git. Re-run the pipeline from a clean state using `uv run python scripts/reset_demo.py` (demo) or by deleting the local `events.ndjson` and `project.md` files and re-running.
 
 ---
 
-*CLAUDE.md v0.5 — companion to PRD.md v0.5 and ARCHITECTURE.md v0.2.*
+*CLAUDE.md v0.5.1 — companion to PRD.md v0.5 and ARCHITECTURE.md v0.2.*
 *Update this file whenever a working agreement changes.*
