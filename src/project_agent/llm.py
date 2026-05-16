@@ -88,7 +88,19 @@ def extract(
         max_tokens=4096,
         messages=[{"role": "user", "content": f"{prompt_text}\n\n---\n\n{source_text}"}],
     )
-    response_text = message.content[0].text
+    response_text = message.content[0].text.strip()
+
+    # Strip markdown code fences some models wrap around JSON output
+    if response_text.startswith("```"):
+        lines = response_text.splitlines()
+        end = len(lines) - 1 if lines[-1].strip() == "```" else len(lines)
+        response_text = "\n".join(lines[1:end]).strip()
+
+    if not response_text:
+        raise ValueError(
+            f"LLM returned empty response for prompt={prompt_name}@{prompt_version} model={model}"
+        )
+
     result: dict[str, Any] = json.loads(response_text)
 
     cache_dir.mkdir(parents=True, exist_ok=True)

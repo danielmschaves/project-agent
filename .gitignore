@@ -31,3 +31,6 @@ REVIEW_NOTES.md
 # OS
 .DS_Store
 Thumbs.db
+
+.pytest_cache/
+design-system/

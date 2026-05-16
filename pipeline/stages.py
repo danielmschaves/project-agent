@@ -565,3 +565,115 @@ def run_commit(
         duration_ms=elapsed,
         counts={"errors": 0},
     )
+
+
+def run_commit_portfolio(
+    project_results: list[tuple[str, RunLog]],
+    repo_root: Path,
+) -> StageResult:
+    """Stage 6 (portfolio) — one branch + PR covering all projects (PRD §13.8).
+
+    Set DRY_RUN=1 to skip actual git operations (useful in tests).
+    """
+    import os
+    start = time.monotonic()
+
+    if os.environ.get("DRY_RUN") == "1":
+        elapsed = int((time.monotonic() - start) * 1000)
+        logger.info("DRY_RUN=1 — skipping portfolio commit stage")
+        return StageResult(
+            name="commit",
+            status="skipped",
+            duration_ms=elapsed,
+            counts={"errors": 0},
+        )
+
+    try:
+        from datetime import date
+        today = date.today().isoformat()
+        branch_name = f"auto/{today}"
+        git.branch(repo_root, branch_name)
+
+        total_signals = sum(
+            sum(s.counts.get("signals_new", 0) for s in run_log.stages if s.name == "analyze")
+            for _, run_log in project_results
+        )
+        commit_msg = (
+            f"chore(agent): portfolio {today} — {len(project_results)} project(s), "
+            f"{total_signals} signal(s)\n\n"
+            f"Projects: {', '.join(pid for pid, _ in project_results)}"
+        )
+        git.commit_all(repo_root, commit_msg)
+
+        pr_body = _build_portfolio_pr_body(project_results, today)
+        pr_title = (
+            f"[agent] portfolio — {today} — {len(project_results)} project(s)"
+        )
+        pr_url = git.open_pr(repo_root, pr_title, pr_body)
+
+    except Exception:
+        logger.exception("Portfolio commit stage failed")
+        elapsed = int((time.monotonic() - start) * 1000)
+        return StageResult(
+            name="commit",
+            status="error",
+            duration_ms=elapsed,
+            counts={"errors": 1},
+            error="See logs for details",
+        )
+
+    elapsed = int((time.monotonic() - start) * 1000)
+    logger.info("Portfolio commit complete: %s", pr_url or "(dry-run)")
+    return StageResult(
+        name="commit",
+        status="ok",
+        duration_ms=elapsed,
+        counts={"projects": len(project_results), "errors": 0},
+    )
+
+
+def _build_portfolio_pr_body(
+    project_results: list[tuple[str, RunLog]],
+    today: str,
+) -> str:
+    rows = []
+    for project_id, run_log in project_results:
+        signals_new = sum(
+            s.counts.get("signals_new", 0) for s in run_log.stages if s.name == "analyze"
+        )
+        errors = sum(s.counts.get("errors", 0) for s in run_log.stages)
+        stage_statuses = {s.name: s.status for s in run_log.stages}
+        overall = "✓ ok" if errors == 0 else "✗ error"
+        rows.append((project_id, overall, signals_new, errors, run_log, stage_statuses))
+
+    table_lines = [
+        "| Project | Status | New Signals | Errors |",
+        "|---|---|---|---|",
+    ]
+    for project_id, overall, signals_new, errors, _, _ in rows:
+        table_lines.append(f"| {project_id} | {overall} | {signals_new} | {errors} |")
+
+    detail_sections = []
+    for project_id, overall, signals_new, errors, run_log, stage_statuses in rows:
+        signals_skipped = sum(
+            s.counts.get("signals_skipped", 0) for s in run_log.stages if s.name == "analyze"
+        )
+        stage_summary = ", ".join(
+            f"{name} {'✓' if status == 'ok' else ('−' if status == 'skipped' else '✗')}"
+            for name, status in stage_statuses.items()
+        )
+        detail_sections.append(
+            f"### {project_id}\n"
+            f"- Run ID: `{run_log.run_id}`\n"
+            f"- Stages: {stage_summary}\n"
+            f"- Signals: {signals_new} new, {signals_skipped} skipped"
+        )
+
+    body = (
+        f"## Portfolio Run — {today}\n\n"
+        + "\n".join(table_lines)
+        + "\n\n"
+        + "\n\n".join(detail_sections)
+        + "\n\n🤖 Generated with [Project Agent](https://github.com/danielmschaves/project-agent)"
+    )
+    return body

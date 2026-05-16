@@ -171,7 +171,7 @@ Phase 0 (MVP) is **complete** — all six stages run end-to-end, idempotence ver
 - ✅ MCP ingest — `project_agent.ingest.mcp` implemented (Gmail/Drive/Calendar via `google-api-python-client`). Gate: set `GOOGLE_TOKEN_PATH=<path-to-token.json>`. If unset, pipeline falls back to file-drop only.
 - ✅ 30-day history backfill — 17 synthetic source files in `_inbox/` spanning 2026-04-10 to 2026-05-14.
 - 🔲 HTML rendering (Phase 0.5) — design system to be added separately; `render.py` is still MD-only.
-- 🔲 Portfolio PR shape decision — document before Phase 2.
+- ✅ Portfolio PR shape — **portfolio-scoped**. `pipeline portfolio` discovers all projects in `projects/`, runs stages 1–5 per project, then opens one PR with a digest table. `pipeline run --project <id>` retained for single-project dev use.
 
 **Out of scope for Phase 0.5 — do not build these yet:**
 - LLM signals (Phase 1)

@@ -7,7 +7,8 @@ import pytest
 
 from project_agent import git
 from project_agent.schemas import RunLog, StageResult
-from pipeline.stages import run_commit
+from pipeline.stages import run_commit, run_commit_portfolio
+from pipeline.cli import _discover_projects
 from datetime import datetime, timezone
 
 
@@ -103,6 +104,59 @@ def test_run_commit_full_flow(bare_repo: Path, monkeypatch: pytest.MonkeyPatch) 
     log = _run_log()
     result = run_commit("test--project", bare_repo, log, bare_repo)
     assert result.status == "skipped"  # DRY_RUN skips git ops
+
+
+# ---------------------------------------------------------------------------
+# run_commit_portfolio with DRY_RUN=1
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_run_commit_portfolio_dry_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DRY_RUN", "1")
+    log_a = RunLog(
+        run_id="run-a",
+        started_at=datetime.now(tz=timezone.utc),
+        project_ids=["proj-a"],
+        stages=[
+            StageResult(name="ingest", status="ok", duration_ms=5,
+                        counts={"sources_new": 1, "errors": 0}),
+            StageResult(name="analyze", status="ok", duration_ms=5,
+                        counts={"signals_new": 2, "errors": 0}),
+        ],
+    )
+    log_b = RunLog(
+        run_id="run-b",
+        started_at=datetime.now(tz=timezone.utc),
+        project_ids=["proj-b"],
+        stages=[
+            StageResult(name="ingest", status="ok", duration_ms=5,
+                        counts={"sources_new": 0, "errors": 0}),
+            StageResult(name="analyze", status="ok", duration_ms=5,
+                        counts={"signals_new": 0, "errors": 0}),
+        ],
+    )
+    result = run_commit_portfolio([("proj-a", log_a), ("proj-b", log_b)], tmp_path)
+    assert result.status == "skipped"
+    assert result.counts["errors"] == 0
+
+
+# ---------------------------------------------------------------------------
+# _discover_projects
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_discover_projects(tmp_path: Path) -> None:
+    (tmp_path / "proj-a").mkdir()
+    (tmp_path / "proj-a" / "project.md").write_text("# A")
+    (tmp_path / "proj-b").mkdir()
+    (tmp_path / "proj-b" / "project.md").write_text("# B")
+    (tmp_path / "no-project-md").mkdir()
+    (tmp_path / "a-file.txt").write_text("not a dir")
+
+    found = _discover_projects(tmp_path)
+    assert found == ["proj-a", "proj-b"]
 
 
 # ---------------------------------------------------------------------------
