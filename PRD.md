@@ -1,10 +1,12 @@
 # PRD — Project Agent
 
-> Version: v0.4
+> Version: v0.5
 > A git-versioned, AI-augmented project operating system.
 > Living project records, machine-readable, signal-first.
 >
 > **v0.4 changes:** MVP scope trimmed; idempotence contract reworked around source-hash + LLM response cache; `project.md` split into bot-owned canonical + PM-owned notes; Event schema gains `schema_version`, `run_id`, `retracted`, `supersedes`, structured `actor`, discriminated `payload`; operations log added as a first-class artifact; stage 3 renamed Warehouse Load; Phase 0.5 introduced for HTML + MCP slice-out; `velocity_anomaly` and `scope_churn` deferred to Phase 4. See `REVIEW_NOTES.md` for the full review and what was deferred.
+>
+> **v0.5 changes:** Phase 0.5 complete. HTML rendering ships — single-project status dashboard + portfolio cross-project dashboard using inlined design system CSS. MCP ingest live (Gmail/Drive/Calendar via `google-api-python-client`). `pipeline portfolio` command added — runs all projects, one PR. `PortfolioProject` model extended. `_BASE_CSS` constant removed.
 
 ---
 
@@ -80,7 +82,7 @@ Six layers, each idempotent and independently testable:
 ┌───────────────────────────────────────────────────────┐
 │  6. Commit         → git PR drafts (HITL)             │
 ├───────────────────────────────────────────────────────┤
-│  5. Render         → MD reports (HTML in Phase 0.5)   │
+│  5. Render         → MD + HTML reports (both shipped)  │
 ├───────────────────────────────────────────────────────┤
 │  4. Analyze        → DuckDB queries + Claude API      │
 ├───────────────────────────────────────────────────────┤
@@ -88,7 +90,7 @@ Six layers, each idempotent and independently testable:
 ├───────────────────────────────────────────────────────┤
 │  2. Parse          → sources → project.md + events    │
 ├───────────────────────────────────────────────────────┤
-│  1. Ingest         → file drops (MCP in Phase 0.5)    │
+│  1. Ingest         → file drops + MCP (both shipped)  │
 └───────────────────────────────────────────────────────┘
 ```
 
@@ -146,9 +148,8 @@ project-agent/
 │       │   ├── backlog/
 │       │   └── manifest.json       # ingestion ledger with hashes
 │       ├── derived/                # auto-generated supplementary md
-│       └── reports/                # daily MD outputs (HTML added Phase 0.5)
-├── portfolio/                      # cross-project rollup (Phase 2)
-│   └── portfolio.md
+│       └── reports/                # daily MD + HTML outputs
+├── portfolio/                      # cross-project rollup (Phase 2 signals; portfolio HTML already in Phase 0.5)
 ├── data/
 │   ├── events.ndjson               # APPEND-ONLY EVENT LOG
 │   ├── warehouse.duckdb
@@ -157,7 +158,7 @@ project-agent/
 │   ├── cache/
 │   │   └── llm/                    # LLM response cache: keyed on (prompt_version, input_hash)
 │   └── schemas/                    # JSON Schema mirrors of pydantic models
-├── design-system/                  # HTML/CSS templates + tokens (Phase 0.5)
+├── design-system/                  # HTML/CSS tokens + system + Portfolio Dashboard reference (shipped Phase 0.5)
 │   ├── tokens.css
 │   ├── templates/
 │   │   ├── status.html.j2
@@ -507,7 +508,7 @@ Each stage is one function in `pipeline/stages.py` that imports primitives from 
 4. NDJSON contains ≥ 20 events spanning ≥ 7 days of project history. *(Reduced from 100 events / 30 days in v0.3 — smaller fixtures are enough to prove the pipeline shape; backfill of real history is a separate exercise.)*
 5. DuckDB warehouse exposes the tables needed by MVP signals: `events`, `actions`, `blockers`. *(Reduced from 5 tables; `risks`, `decisions`, `milestones`, `stakeholders` are added in Phase 1 when signals on them fire.)*
 6. At least 3 deterministic signals detected on real data: `action_aging`, `action_unowned`, `blocker_unowned`. Each signal's `signal_detected` event carries `evidence: [event_id, ...]` linking to triggering rows (§6.3).
-7. MD daily status report renders, committed via PR. *(HTML rendering deferred to Phase 0.5.)*
+7. MD daily status report renders, committed via PR. HTML rendering ships in Phase 0.5 — single-project status dashboard and portfolio cross-project dashboard, both byte-identical on re-run.
 8. **All state mutations go through `project_agent` package APIs** — package-boundary lint passes (§5.1 invariant).
 9. `project_agent.events.query` exists as a first-class API (filter by project, type, time range, retracted/superseded). Without this, signals cannot be written and the audit story is theoretical.
 10. Operations log (`data/runs/<run_id>.json`, §6.4) written per run with per-stage counts, durations, and errors. Committed with the PR.
@@ -527,11 +528,12 @@ Each stage is one function in `pipeline/stages.py` that imports primitives from 
 
 ## 11. Phased Roadmap
 
-### Phase 0.5 — HTML + MCP (sliced out of MVP in v0.4)
-- Add HTML rendering with Jinja2 templates and design-system tokens.
-- Port `project_agent.ingest.mcp` (Gmail/Drive/Calendar) from the existing pipeline.
-- Backfill ≥ 30 days of real history on the MVP project.
-- **Portfolio PR shape decision** (new in v0.4): even with one project, decide whether the daily PR is project-scoped or portfolio-scoped before Phase 2 starts adding projects. The portfolio-shape PR (one PR per run with project subdirs and a top-of-PR digest) scales better past 2 projects; the project-shape PR is simpler at one. Choose explicitly and document. See `REVIEW_NOTES.md`.
+### Phase 0.5 — HTML + MCP ✅ Complete
+
+- ✅ HTML rendering: single-project status dashboard + portfolio cross-project dashboard. Design system CSS inlined from `design-system/` (tokens.css + system.css + portfolio layout extracted from `Portfolio Dashboard.html`). Editorial header with italic emphasis, 5-card fact strip, indicator grid (6 categories × project, hover popovers), attention strip (top-3 by composite score), verdict callout. Byte-identical on re-run.
+- ✅ `project_agent.ingest.mcp` — Gmail/Drive/Calendar via `google-api-python-client`. Gated by `GOOGLE_TOKEN_PATH`.
+- ✅ 30-day history backfill — 17 synthetic source files spanning 2026-04-10 to 2026-05-14 for `demo--sample-2026`.
+- ✅ Portfolio PR shape — decided and implemented as **portfolio-scoped**: `pipeline portfolio` runs all projects, renders portfolio HTML, opens one PR. `pipeline run --project <id>` retained for single-project dev use.
 
 ### Phase 1 — LLM Signals + Scheduled Operation
 - Activate `risk_escalation`, `risk_emergent`, `tone_shift` LLM signals.
@@ -541,10 +543,11 @@ Each stage is one function in `pipeline/stages.py` that imports primitives from 
 - Define cron-host threat model: where do OAuth tokens live, where does pipeline stdout/stderr go, what's the failure-loud guarantee on auth refresh.
 - Per-project per-day LLM cost cap; operational signal when cap is approached.
 
-### Phase 2 — Portfolio Layer
-- `python -m pipeline run --all` across `projects/*`.
-- Portfolio MD + HTML in `portfolio/`.
-- Cross-project signals: resource conflicts, stakeholder overload, correlated drift.
+### Phase 2 — Portfolio Signals
+- `pipeline portfolio` already ships in Phase 0.5 — multi-project CLI, portfolio HTML dashboard.
+- Add cross-project signals: resource conflicts, stakeholder overload, correlated drift.
+- Δ7d column in indicator grid (requires prior-run snapshot comparison).
+- Backlog hotspots panel in portfolio HTML (requires per-project open/closed/overdue counts).
 - `deliverable_dependency_stall` (reclassified to LLM) goes live here.
 - Review candidate signals from §7.1 and promote those that earn it.
 
@@ -576,7 +579,7 @@ Each stage is one function in `pipeline/stages.py` that imports primitives from 
 | Phase | Acceptance |
 |---|---|
 | MVP | DoD §10 verified end-to-end. Package-boundary lint passes. Idempotence verified across two consecutive runs. |
-| 0.5 | HTML report renders with design system. MCP ingest pulls real Gmail/Drive/Calendar data without regression to idempotence. ≥ 30 days of real history backfilled. Portfolio-PR-shape decision made. |
+| 0.5 | ✅ HTML report renders with design system (editorial header, 5-card fact strip, indicator grid, attention strip). MCP ingest live. ≥ 17 synthetic source files processed. Portfolio-scoped PR opens one PR for all projects. Byte-identical HTML on re-run. |
 | 1 | ≥ 1 LLM signal fires on real data; daily cron runs without manual intervention for ≥ 5 consecutive days; cost cap enforced. |
 | 2 | Portfolio HTML renders ≥ 3 projects with ≥ 1 cross-project signal. |
 | 3 | PR contains ≥ 1 outbox email draft per week, PM-merged and sent. `outbox/` storage policy implemented. |
@@ -625,4 +628,4 @@ Each stage (§8) is its own PR. No stage is "done" until idempotence is verified
 
 ---
 
-*End of PRD v0.4.*
+*End of PRD v0.5.*

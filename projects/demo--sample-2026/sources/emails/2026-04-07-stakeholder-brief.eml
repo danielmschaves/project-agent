@@ -1,0 +1,27 @@
+From: alice.chen@example.com
+To: exec-stakeholders@example.com
+CC: bob.kim@example.com
+Date: Tue, 07 Apr 2026 09:15:00 +0000
+Subject: Alpha API Platform — Kickoff Brief
+
+Hi all,
+
+Sharing a quick brief ahead of the April 15 kickoff. We are officially green-lit.
+
+Key things to know:
+- Project runs April 2026 through July 2026 (Q3 launch target)
+- Three partner integrations in scope: fintech (Dave Park), healthcare (Partner B), logistics (Partner C)
+- Bob Kim is Tech Lead; I am PM / DRI for delivery
+- Security review is scoped in from day one — Carol Davis is allocated 40%
+
+Risks I am watching closely:
+1. Partner B is a healthcare company. HIPAA compliance will require either internal review or
+   an external audit. We do not yet know the scope. Carol is engaging next week.
+2. We have two open hires (Backend Eng #2, Frontend Eng 50%). Both JDs are posted. I have
+   flagged to recruiting that these are critical path.
+
+Next milestone: Architecture Decision Records (ADRs) approved by April 30.
+
+I'll send a weekly update every Monday. First one will be April 14.
+
+Alice

@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from project_agent import events as events_api
+from project_agent import projects as projects_api
+from project_agent.render import PortfolioProject
 from project_agent.schemas import RunLog, Signal, SignalDetectedPayload
 from pipeline import stages
 
@@ -22,11 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 def _discover_projects(projects_dir: Path) -> list[str]:
-    """Return sorted project IDs — subdirs of projects_dir that contain project.md."""
+    """Return sorted project IDs — subdirs of projects_dir that contain project.notes.md.
+
+    Uses project.notes.md (PM-owned fixture, always committed) rather than
+    project.md (bot-generated, gitignored) so discovery works on a fresh clone.
+    """
     return sorted(
         d.name
         for d in projects_dir.iterdir()
-        if d.is_dir() and (d / "project.md").exists()
+        if d.is_dir() and (d / "project.notes.md").exists()
     )
 
 
@@ -95,6 +101,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
     events_path.touch()
     data_dir.mkdir(parents=True, exist_ok=True)
 
+    design_system_dir: Path | None = Path("design-system")
+    if not design_system_dir.exists():
+        design_system_dir = None
+
     run_log = RunLog(
         run_id=run_id,
         started_at=datetime.now(tz=timezone.utc),
@@ -156,7 +166,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
                 ))
 
     # Stage 5 — Render
-    _step("render", stages.run_render(project_id, project_dir, signals, run_id))
+    _step("render", stages.run_render(
+        project_id, project_dir, signals, run_id, design_system_dir=design_system_dir
+    ))
 
     # Stage 6 — Commit
     _step("commit", stages.run_commit(project_id, project_dir, run_log, Path(".")))
@@ -197,7 +209,12 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
     schemas_dir = Path("data/schemas/signals")
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    portfolio_results: list[tuple[str, RunLog]] = []
+    design_system_dir: Path | None = Path("design-system")
+    if not design_system_dir.exists():
+        design_system_dir = None
+
+    portfolio_results: list[tuple[str, RunLog, list[Signal]]] = []
+    portfolio_summaries: list[PortfolioProject] = []
 
     for project_id in project_ids:
         project_dir = projects_dir / project_id
@@ -256,7 +273,9 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
                         recommended_action=p.recommended_action,
                     ))
 
-        _step("render", stages.run_render(project_id, project_dir, signals, run_id))
+        _step("render", stages.run_render(
+            project_id, project_dir, signals, run_id, design_system_dir=design_system_dir
+        ))
 
         run_log.ended_at = datetime.now(tz=timezone.utc)
         runs_dir = data_dir / "runs"
@@ -264,11 +283,44 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
         (runs_dir / f"{run_id}.json").write_text(
             run_log.model_dump_json(indent=2), encoding="utf-8"
         )
-        portfolio_results.append((project_id, run_log))
+
+        project_meta = projects_api.load_project(project_dir)
+        project_status = str(project_meta.get("metadata", {}).get("status", "unknown"))
+        _source_events = events_api.query(
+            events_path, project_id=project_id, types=["source_ingested"]
+        )
+        portfolio_summaries.append(PortfolioProject(
+            project_id=project_id,
+            status=project_status,
+            run_id=run_log.run_id,
+            signals=list(signals),
+            signals_new=sum(
+                s.counts.get("signals_new", 0) for s in run_log.stages if s.name == "analyze"
+            ),
+            errors=sum(s.counts.get("errors", 0) for s in run_log.stages),
+            stage_statuses={s.name: s.status for s in run_log.stages},
+            client_id=project_id.split("--", 1)[0],
+            sponsor=str(project_meta.get("metadata", {}).get("sponsor", "")) or None,
+            phase=str(project_meta.get("metadata", {}).get("phase", "")) or None,
+            last_source_ts=max(
+                (e.ts for e in _source_events), default=None
+            ),
+            events_count=len(events_api.query(events_path, project_id=project_id)),
+        ))
+        portfolio_results.append((project_id, run_log, list(signals)))
+
+    # Stage 5b — portfolio HTML dashboard (before commit so it lands in the PR)
+    reports_dir = Path(".") / "reports"
+    portfolio_render = stages.run_render_portfolio(
+        portfolio_summaries, reports_dir, design_system_dir=design_system_dir
+    )
+    status_str = "✓" if portfolio_render.status == "ok" else f"✗ {portfolio_render.status}"
+    print(f"  {'portfolio':12s} {status_str}  {portfolio_render.counts}")
 
     # Stage 6 — one commit + PR for all projects
     print("\nOpening portfolio PR…")
-    commit_result = stages.run_commit_portfolio(portfolio_results, Path("."))
+    commit_data = [(pid, log) for pid, log, _ in portfolio_results]
+    commit_result = stages.run_commit_portfolio(commit_data, Path("."))
     status_str = "✓" if commit_result.status in ("ok", "skipped") else f"✗ {commit_result.status}"
     print(f"  {'commit':12s} {status_str}  {commit_result.counts}")
 
@@ -276,19 +328,38 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
     from datetime import date as _date
     today = _date.today().isoformat()
     portfolio_run_id = uuid.uuid4().hex[:8]
+    per_project_errors = sum(
+        sum(s.counts.get("errors", 0) for s in rl.stages)
+        for _, rl, _ in portfolio_results
+    )
     summary = {
         "portfolio_run_id": portfolio_run_id,
         "date": today,
-        "project_ids": [pid for pid, _ in portfolio_results],
-        "per_project_run_ids": {pid: rl.run_id for pid, rl in portfolio_results},
+        "project_ids": [pid for pid, _, _ in portfolio_results],
+        "per_project_run_ids": {pid: rl.run_id for pid, rl, _ in portfolio_results},
         "total_signals": sum(
             sum(s.counts.get("signals_new", 0) for s in rl.stages if s.name == "analyze")
-            for _, rl in portfolio_results
+            for _, rl, _ in portfolio_results
         ),
-        "total_errors": sum(
-            sum(s.counts.get("errors", 0) for s in rl.stages)
-            for _, rl in portfolio_results
+        "total_errors": (
+            per_project_errors
+            + portfolio_render.counts.get("errors", 0)
+            + commit_result.counts.get("errors", 0)
         ),
+        "stages": {
+            "portfolio_render": {
+                "name": portfolio_render.name,
+                "status": portfolio_render.status,
+                "duration_ms": portfolio_render.duration_ms,
+                "counts": portfolio_render.counts,
+            },
+            "commit": {
+                "name": commit_result.name,
+                "status": commit_result.status,
+                "duration_ms": commit_result.duration_ms,
+                "counts": commit_result.counts,
+            },
+        },
     }
     runs_dir = data_dir / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -296,7 +367,7 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
         json.dumps(summary, indent=2), encoding="utf-8"
     )
 
-    total_errors = summary["total_errors"] + commit_result.counts.get("errors", 0)
+    total_errors = summary["total_errors"]
     print(f"\nPortfolio complete: {len(portfolio_results)} project(s)  errors={total_errors}")
     return 0 if total_errors == 0 else 1
 

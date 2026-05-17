@@ -25,9 +25,19 @@ def branch(repo_root: Path, branch_name: str) -> None:
     logger.info("Created branch: %s", branch_name)
 
 
-def commit_all(repo_root: Path, message: str) -> None:
-    """Stage all changes and create a commit."""
+def commit_all(
+    repo_root: Path,
+    message: str,
+    force_paths: list[Path] | None = None,
+) -> None:
+    """Stage all changes and create a commit.
+
+    force_paths are added with -f so gitignored pipeline outputs
+    (events.ndjson, project.md, reports/) reach the auto/* PR.
+    """
     _run(["git", "add", "-A"], repo_root)
+    for p in force_paths or []:
+        _run(["git", "add", "-f", str(p)], repo_root)
     _run(["git", "commit", "-m", message], repo_root)
     logger.info("Committed: %s", message[:60])
 

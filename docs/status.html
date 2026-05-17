@@ -1,0 +1,2152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Agent — Current State</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,300;1,9..144,400;1,9..144,600&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.4.0/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg-deep: #08090f;
+    --bg-surface: #11131c;
+    --bg-elevated: #1a1d2a;
+    --bg-panel: #14171f;
+    --border: rgba(232, 227, 211, 0.08);
+    --border-bright: rgba(94, 234, 212, 0.25);
+    --border-strong: rgba(94, 234, 212, 0.5);
+    --text-primary: #e8e3d3;
+    --text-secondary: #a8b0bf;
+    --text-muted: #6b7280;
+    --text-faint: #3f4654;
+    --accent-cyan: #5eead4;
+    --accent-amber: #fbbf24;
+    --accent-coral: #f87171;
+    --accent-sage: #86efac;
+    --accent-sky: #7dd3fc;
+    --shadow-deep: 0 20px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--border);
+    --shadow-card: 0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px var(--border);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    font-weight: 400;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(94,234,212,0.04) 0%, transparent 50%),
+      radial-gradient(circle at 80% 100%, rgba(251,191,36,0.03) 0%, transparent 50%),
+      linear-gradient(var(--bg-deep), var(--bg-deep));
+    background-attachment: fixed;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(232,227,211,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232,227,211,0.015) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    max-width: 1280px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* MASTHEAD */
+  .masthead {
+    grid-column: 1 / -1;
+    padding: 56px 56px 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .masthead-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-muted);
+    margin-bottom: 28px;
+  }
+  .masthead-meta .dot { color: var(--accent-cyan); font-size: 10px; margin: 0 8px; }
+  .masthead-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: clamp(44px, 6vw, 88px);
+    line-height: 0.98;
+    letter-spacing: -0.025em;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+  .masthead-title em { font-style: italic; font-weight: 400; color: var(--accent-cyan); }
+  .masthead-sub {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: clamp(18px, 2.2vw, 24px);
+    color: var(--text-secondary);
+    max-width: 800px;
+    line-height: 1.45;
+    margin-top: 18px;
+  }
+  .masthead-deck {
+    margin-top: 20px;
+    font-size: 13px;
+    color: var(--text-muted);
+    max-width: 780px;
+    line-height: 1.7;
+  }
+  .masthead-deck strong { color: var(--text-primary); font-weight: 500; }
+  .masthead-rule {
+    margin-top: 36px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+  }
+  .masthead-rule::before, .masthead-rule::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* TOC */
+  .toc {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    padding: 0 24px 0 56px;
+    height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+  .toc-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--text-faint);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .toc-list { list-style: none; }
+  .toc-item { margin-bottom: 4px; }
+  .toc-link {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 12px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 12px;
+    line-height: 1.4;
+    border-left: 2px solid transparent;
+    transition: all 0.2s ease;
+  }
+  .toc-link:hover { color: var(--text-primary); border-left-color: var(--text-faint); background: rgba(232,227,211,0.02); }
+  .toc-link.active { color: var(--accent-cyan); border-left-color: var(--accent-cyan); background: rgba(94,234,212,0.04); }
+  .toc-num { font-size: 11px; color: var(--text-faint); flex-shrink: 0; }
+  .toc-link.active .toc-num { color: var(--accent-cyan); }
+  .toc-cross {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-faint);
+  }
+  .toc-cross a {
+    display: block;
+    padding: 6px 12px;
+    color: var(--text-muted);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    transition: all 0.2s;
+  }
+  .toc-cross a:hover { color: var(--accent-cyan); border-left-color: var(--text-faint); }
+
+  /* MAIN */
+  .main { padding: 0 56px 96px; min-width: 0; }
+  .panel { margin-bottom: 112px; scroll-margin-top: 24px; }
+  .panel-header { margin-bottom: 36px; }
+  .panel-num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 72px;
+    line-height: 1;
+    color: var(--accent-cyan);
+    opacity: 0.6;
+    display: block;
+    margin-bottom: 6px;
+    letter-spacing: -0.04em;
+  }
+  .panel-num-suffix { color: var(--text-faint); font-size: 36px; margin-left: 4px; }
+  .panel-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: clamp(28px, 4vw, 44px);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    color: var(--text-primary);
+    margin-bottom: 14px;
+  }
+  .panel-title em { font-style: italic; color: var(--accent-cyan); }
+  .panel-subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+  }
+  .panel-intro {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 18px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    max-width: 720px;
+    margin-bottom: 36px;
+  }
+  .panel-intro em { font-style: italic; color: var(--text-primary); }
+
+  /* STAGE (diagram wrapper) */
+  .stage {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 32px;
+    overflow-x: auto;
+    box-shadow: var(--shadow-deep);
+    position: relative;
+    margin-bottom: 28px;
+  }
+  .stage::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+    opacity: 0.4;
+  }
+  .stage-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed var(--border);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+  }
+  .stage-meta .stage-id { color: var(--accent-cyan); }
+  .mermaid { text-align: center; min-height: 120px; }
+
+  /* FACT GRID */
+  .fact-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin: 36px 0;
+  }
+  .fact-grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .fact {
+    padding: 24px 20px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-panel);
+    position: relative;
+  }
+  .fact::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    height: 2px; width: 32px;
+    background: var(--accent-cyan);
+  }
+  .fact.amber::before { background: var(--accent-amber); }
+  .fact.coral::before { background: var(--accent-coral); }
+  .fact.sage::before { background: var(--accent-sage); }
+  .fact-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+    margin-bottom: 14px;
+  }
+  .fact-value {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: 36px;
+    line-height: 1;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+  .fact.amber .fact-value { color: var(--accent-amber); }
+  .fact.sage .fact-value { color: var(--accent-sage); }
+  .fact-detail { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+  /* COMPARE GRID */
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    margin: 36px 0;
+  }
+  .compare-col {
+    padding: 28px 24px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+  .compare-col.pre { border-left: 2px solid var(--accent-coral); }
+  .compare-col.post { border-left: 2px solid var(--accent-sage); }
+  .compare-tag {
+    display: inline-block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    padding: 4px 10px;
+    border-radius: 2px;
+    margin-bottom: 14px;
+  }
+  .compare-col.pre .compare-tag { background: rgba(248,113,113,0.12); color: var(--accent-coral); }
+  .compare-col.post .compare-tag { background: rgba(134,239,172,0.12); color: var(--accent-sage); }
+  .compare-headline {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: 20px;
+    line-height: 1.25;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+  }
+  .compare-headline em { font-style: italic; color: var(--accent-cyan); }
+  .compare-list { list-style: none; }
+  .compare-list li {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    padding: 8px 0 8px 18px;
+    position: relative;
+    border-bottom: 1px dashed var(--border);
+  }
+  .compare-list li:last-child { border-bottom: none; }
+  .compare-list li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 17px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+  }
+  .compare-col.pre .compare-list li::before { background: var(--accent-coral); opacity: 0.5; }
+  .compare-col.post .compare-list li::before { background: var(--accent-sage); opacity: 0.6; }
+
+  /* LAYER STACK */
+  .layer-stack {
+    margin: 36px 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--bg-panel);
+    box-shadow: var(--shadow-card);
+  }
+  .layer {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    gap: 20px;
+    transition: background 0.2s;
+  }
+  .layer:last-child { border-bottom: none; }
+  .layer:hover { background: rgba(94,234,212,0.025); }
+  .layer-num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 26px;
+    color: var(--accent-cyan);
+    opacity: 0.6;
+  }
+  .layer-content { min-width: 0; }
+  .layer-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .layer-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+  .layer-badge {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    padding: 4px 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .badge-done { background: rgba(94,234,212,0.14); color: var(--accent-cyan); }
+  .badge-amber { background: rgba(251,191,36,0.14); color: var(--accent-amber); }
+  .badge-future { background: rgba(232,227,211,0.06); color: var(--text-muted); }
+  .badge-red { background: rgba(248,113,113,0.14); color: var(--accent-coral); }
+  .badge-sage { background: rgba(134,239,172,0.14); color: var(--accent-sage); }
+
+  /* CALLOUT */
+  .callout {
+    margin: 28px 0;
+    padding: 20px 24px;
+    border-left: 2px solid var(--accent-cyan);
+    background: rgba(94,234,212,0.03);
+    border-radius: 0 4px 4px 0;
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+  }
+  .callout-label {
+    display: inline-block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--accent-cyan);
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  .callout.warn { border-left-color: var(--accent-amber); background: rgba(251,191,36,0.04); }
+  .callout.warn .callout-label { color: var(--accent-amber); }
+  .callout.info-sage { border-left-color: var(--accent-sage); background: rgba(134,239,172,0.03); }
+  .callout.info-sage .callout-label { color: var(--accent-sage); }
+  .callout strong { color: var(--text-primary); font-weight: 500; }
+  .callout code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    padding: 1px 6px;
+    background: rgba(232,227,211,0.06);
+    border-radius: 2px;
+    color: var(--accent-cyan);
+  }
+
+  /* CAPTION */
+  .caption {
+    margin-top: 20px;
+    padding: 18px 22px;
+    border-left: 2px solid var(--accent-cyan);
+    background: rgba(94,234,212,0.025);
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+  .caption strong {
+    font-style: normal;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+
+  /* PULL QUOTE */
+  .pull-quote {
+    margin: 48px 0;
+    padding: 32px 40px;
+    border-left: 3px solid var(--accent-cyan);
+    background: rgba(94,234,212,0.03);
+    position: relative;
+  }
+  .pull-quote-mark {
+    position: absolute;
+    top: -8px; left: 32px;
+    font-family: 'Fraunces', serif;
+    font-size: 80px;
+    line-height: 1;
+    color: var(--accent-cyan);
+    opacity: 0.35;
+  }
+  .pull-quote-text {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-style: italic;
+    font-size: 24px;
+    line-height: 1.4;
+    color: var(--text-primary);
+    margin-bottom: 14px;
+    padding-left: 24px;
+  }
+  .pull-quote-text strong { font-style: normal; font-weight: 500; color: var(--accent-cyan); }
+  .pull-quote-attr {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+    padding-left: 24px;
+  }
+
+  /* CONTRACT CARDS */
+  .contract-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin: 36px 0;
+  }
+  .contract-card {
+    padding: 28px 24px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-panel);
+    position: relative;
+    overflow: hidden;
+  }
+  .contract-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+    opacity: 0.5;
+  }
+  .contract-num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 40px;
+    line-height: 1;
+    color: var(--accent-cyan);
+    opacity: 0.55;
+    margin-bottom: 12px;
+  }
+  .contract-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: 18px;
+    line-height: 1.25;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+  }
+  .contract-name em { font-style: italic; color: var(--accent-cyan); }
+  .contract-body { font-size: 13px; line-height: 1.65; color: var(--text-secondary); }
+  .contract-tag {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+  }
+
+  /* PHASE LIST */
+  .phase-list {
+    margin: 36px 0;
+    list-style: none;
+    position: relative;
+  }
+  .phase-list::before {
+    content: '';
+    position: absolute;
+    top: 36px; bottom: 36px; left: 52px;
+    width: 1px;
+    background: linear-gradient(to bottom, transparent, var(--border-bright) 5%, var(--border-bright) 95%, transparent);
+  }
+  .phase-item {
+    display: grid;
+    grid-template-columns: 104px 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+    position: relative;
+  }
+  .phase-rail { position: relative; padding-top: 14px; }
+  .phase-num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 44px;
+    line-height: 1;
+    color: var(--accent-cyan);
+    opacity: 0.65;
+    text-align: right;
+    padding-right: 18px;
+  }
+  .phase-dot {
+    position: absolute;
+    top: 22px; left: 100%;
+    transform: translateX(-50%);
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--bg-deep);
+    border: 2px solid var(--accent-cyan);
+    z-index: 1;
+  }
+  .phase-item.mvp .phase-dot { background: var(--accent-cyan); }
+  .phase-item.future .phase-dot { border-color: var(--text-faint); }
+  .phase-card {
+    padding: 22px 26px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-panel);
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .phase-card:hover { border-color: var(--border-bright); transform: translateX(2px); }
+  .phase-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .phase-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: 20px;
+    line-height: 1.2;
+    color: var(--text-primary);
+  }
+  .phase-name em { font-style: italic; color: var(--accent-cyan); }
+  .phase-status {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    padding: 3px 9px;
+    border-radius: 2px;
+    font-weight: 500;
+  }
+  .phase-status.done { background: rgba(94,234,212,0.16); color: var(--accent-cyan); }
+  .phase-status.next { background: rgba(251,191,36,0.14); color: var(--accent-amber); }
+  .phase-status.future { background: rgba(232,227,211,0.06); color: var(--text-muted); }
+  .phase-goal {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 300;
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+  }
+  .phase-items { list-style: none; }
+  .phase-items li {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 4px 0 4px 14px;
+    position: relative;
+    line-height: 1.5;
+  }
+  .phase-items li::before {
+    content: '—';
+    position: absolute;
+    left: 0;
+    color: var(--text-faint);
+  }
+  .phase-items li strong { color: var(--text-secondary); font-weight: 500; }
+
+  /* DATA TABLE */
+  .data-table-wrap {
+    margin: 32px 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--bg-panel);
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .data-table thead tr {
+    border-bottom: 1px solid var(--border-bright);
+    background: rgba(94,234,212,0.04);
+  }
+  .data-table th {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-faint);
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 500;
+  }
+  .data-table td {
+    padding: 10px 16px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: rgba(232,227,211,0.015); }
+  .data-table td.mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); }
+  .data-table td strong { color: var(--text-primary); font-weight: 500; }
+
+  /* TYPE BADGES */
+  .type-badge {
+    display: inline-block;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    padding: 2px 7px;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .type-email { background: rgba(125,211,252,0.12); color: var(--accent-sky); }
+  .type-doc { background: rgba(94,234,212,0.12); color: var(--accent-cyan); }
+  .type-backlog { background: rgba(251,191,36,0.12); color: var(--accent-amber); }
+
+  /* SIGNAL CARDS */
+  .signal-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin: 36px 0;
+  }
+  .signal-card {
+    padding: 28px 24px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-panel);
+    position: relative;
+    overflow: hidden;
+  }
+  .signal-card.high { border-top: 2px solid var(--accent-coral); }
+  .signal-card.medium { border-top: 2px solid var(--accent-amber); }
+  .signal-card.low { border-top: 2px solid var(--text-faint); }
+  .signal-id {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-faint);
+    margin-bottom: 12px;
+  }
+  .signal-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: 20px;
+    line-height: 1.2;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+  .signal-severity {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    padding: 3px 8px;
+    border-radius: 2px;
+    display: inline-block;
+    margin-bottom: 16px;
+  }
+  .signal-card.high .signal-severity { background: rgba(248,113,113,0.14); color: var(--accent-coral); }
+  .signal-card.medium .signal-severity { background: rgba(251,191,36,0.14); color: var(--accent-amber); }
+  .signal-body { font-size: 13px; line-height: 1.65; color: var(--text-secondary); margin-bottom: 16px; }
+  .signal-evidence {
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+    font-size: 11px;
+    color: var(--text-faint);
+    line-height: 1.6;
+  }
+  .signal-evidence strong { color: var(--text-muted); font-weight: 500; }
+  .signal-evidence code {
+    font-size: 10px;
+    padding: 1px 5px;
+    background: rgba(232,227,211,0.06);
+    border-radius: 2px;
+    color: var(--accent-cyan);
+  }
+
+  /* CODE FENCE */
+  .code-fence {
+    margin: 24px 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-panel);
+    overflow: hidden;
+  }
+  .code-fence-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(232,227,211,0.02);
+  }
+  .code-fence-lang {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--accent-cyan);
+  }
+  .code-fence-file { font-size: 11px; color: var(--text-faint); }
+  .code-fence pre {
+    padding: 20px 20px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
+  .code-fence pre .k { color: var(--accent-cyan); }
+  .code-fence pre .s { color: var(--accent-sage); }
+  .code-fence pre .c { color: var(--text-faint); font-style: italic; }
+  .code-fence pre .n { color: var(--accent-amber); }
+
+  /* DOD */
+  .dod-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; margin: 32px 0; }
+  .dod-col { padding: 24px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-panel); }
+  .dod-col.in { border-top: 2px solid var(--accent-sage); }
+  .dod-col.out { border-top: 2px solid var(--text-faint); opacity: 0.88; }
+  .dod-col-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.22em; color: var(--text-faint); margin-bottom: 6px; }
+  .dod-col.in .dod-col-label { color: var(--accent-sage); }
+  .dod-col-title { font-family: 'Fraunces', serif; font-weight: 400; font-size: 20px; color: var(--text-primary); margin-bottom: 16px; }
+  .dod-col-title em { font-style: italic; color: var(--accent-cyan); }
+  .dod-list { list-style: none; }
+  .dod-item { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 9px 0; font-size: 13px; line-height: 1.55; color: var(--text-secondary); border-bottom: 1px dashed var(--border); }
+  .dod-item:last-child { border-bottom: none; }
+  .dod-check { color: var(--accent-sage); }
+  .dod-skip { color: var(--text-faint); }
+  .dod-item strong { color: var(--text-primary); font-weight: 500; }
+  .dod-item code { font-size: 11px; padding: 1px 5px; background: rgba(232,227,211,0.06); border-radius: 2px; color: var(--accent-cyan); }
+
+  /* FOOTER */
+  .footer {
+    grid-column: 1 / -1;
+    margin-top: 48px;
+    padding: 28px 56px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-faint);
+  }
+  .footer a { color: var(--text-muted); text-decoration: none; border-bottom: 1px dashed transparent; transition: all 0.2s; }
+  .footer a:hover { color: var(--accent-cyan); border-bottom-color: var(--accent-cyan); }
+
+  /* RESPONSIVE */
+  @media (max-width: 960px) {
+    .layout { grid-template-columns: 1fr; }
+    .masthead { padding: 32px 24px 24px; }
+    .toc { position: static; height: auto; padding: 0 24px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+    .toc-list { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 8px; flex-wrap: nowrap; }
+    .toc-item { flex-shrink: 0; }
+    .toc-link { border-left: none; border-bottom: 2px solid transparent; }
+    .toc-link.active { border-left: none; border-bottom-color: var(--accent-cyan); }
+    .main { padding: 0 24px 64px; }
+    .panel { margin-bottom: 64px; }
+    .fact-grid, .fact-grid-3 { grid-template-columns: repeat(2, 1fr); }
+    .compare-grid, .signal-grid, .contract-grid, .dod-grid { grid-template-columns: 1fr; }
+    .footer { padding: 24px; }
+  }
+
+  /* MERMAID OVERRIDES */
+  .mermaid .nodeLabel, .mermaid .label, .mermaid .edgeLabel {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important;
+  }
+  .mermaid .cluster rect {
+    fill: rgba(94,234,212,0.03) !important;
+    stroke: rgba(94,234,212,0.2) !important;
+    stroke-dasharray: 4 4;
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- ═══════════════ MASTHEAD ═══════════════ -->
+<header class="masthead">
+  <div class="masthead-meta">
+    <span><span class="dot">●</span> PROJECT AGENT <span class="dot">●</span> PHASE 0.5 COMPLETE <span class="dot">●</span> v0.5</span>
+    <span>FILED <span id="today"></span></span>
+  </div>
+  <h1 class="masthead-title">Current <em>State</em></h1>
+  <p class="masthead-sub">Build status, executed pipeline output, HTML report design system, signal catalog, and full technical reference — as of Phase 0.5 completion.</p>
+  <p class="masthead-deck">
+    <strong>For the PM:</strong> what the system does, what it detected on the demo project, and what the rendered HTML reports look like.
+    <strong>For the engineer:</strong> data contracts, test architecture, package boundary, idempotence model, and the new HTML rendering design system.
+    Phase 0.5 is complete — MCP ingest, 30-day corpus, portfolio PR shape, and HTML v2 design system rendering have all shipped.
+  </p>
+  <div class="masthead-rule"><span>SCROLL OR JUMP</span></div>
+</header>
+
+<!-- ═══════════════ TOC ═══════════════ -->
+<nav class="toc">
+  <div class="toc-label">Contents</div>
+  <ul class="toc-list">
+    <li class="toc-item"><a class="toc-link" href="#s1"><span class="toc-num">01</span><span>Build Status</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#s2"><span class="toc-num">02</span><span>Demo Project</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#s3"><span class="toc-num">03</span><span>Source Corpus</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#s4"><span class="toc-num">04</span><span>Pipeline Stages</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#s5"><span class="toc-num">05</span><span>Projected Run</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#s6"><span class="toc-num">06</span><span>Signal Catalog</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#s7"><span class="toc-num">07</span><span>Data Contracts</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#s8"><span class="toc-num">08</span><span>Test Coverage</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#s9"><span class="toc-num">09</span><span>Codebase Map</span></a></li>
+    <li class="toc-item"><a class="toc-link" href="#s10"><span class="toc-num">10</span><span>Roadmap</span></a></li>
+  </ul>
+  <div class="toc-cross">
+    Also in docs/
+    <a href="architecture.html">Architecture Diagrams</a>
+    <a href="field_manual.html">Field Manual</a>
+  </div>
+</nav>
+
+<!-- ═══════════════ MAIN ═══════════════ -->
+<main class="main">
+
+<!-- ══════════════════════════════════════════════
+     01 — BUILD STATUS
+══════════════════════════════════════════════ -->
+<section class="panel" id="s1">
+  <div class="panel-header">
+    <span class="panel-num">01<span class="panel-num-suffix">/10</span></span>
+    <h2 class="panel-title">Build <em>Status</em></h2>
+    <p class="panel-subtitle">Phase 0.5 complete · 10 PRs merged · pipeline executed · HTML reports live</p>
+  </div>
+  <p class="panel-intro">Phase 0.5 is complete. The pipeline has been executed against the demo corpus. <em>MCP ingest, portfolio PR shape, and HTML v2 design system</em> rendering have all shipped. Both single-project and portfolio HTML dashboards are generated on every run.</p>
+
+  <div class="fact-grid">
+    <div class="fact sage">
+      <div class="fact-label">PRs Merged</div>
+      <div class="fact-value">10</div>
+      <div class="fact-detail">Phase 0 (8) + Phase 0.5 (2) · all to main</div>
+    </div>
+    <div class="fact">
+      <div class="fact-label">Pipeline Stages</div>
+      <div class="fact-value">6/6</div>
+      <div class="fact-detail">Ingest → Parse → Warehouse → Analyze → Render → Commit</div>
+    </div>
+    <div class="fact">
+      <div class="fact-label">Demo Source Files</div>
+      <div class="fact-value">17</div>
+      <div class="fact-detail">Apr 10 → May 14 · 35 days · 3 file types · parsed and moved to typed folders</div>
+    </div>
+    <div class="fact sage">
+      <div class="fact-label">HTML Reports</div>
+      <div class="fact-value">2</div>
+      <div class="fact-detail">Single-project status + portfolio dashboard · generated every run</div>
+    </div>
+  </div>
+
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>PR</th>
+          <th>Branch</th>
+          <th>Stage / Scope</th>
+          <th>Key Deliverables</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">#1</td>
+          <td class="mono">feat/scaffold</td>
+          <td><strong>Scaffold</strong></td>
+          <td>Docker + uv setup, pydantic v0.4 schemas, project structure</td>
+          <td><span class="layer-badge badge-done">Merged</span></td>
+        </tr>
+        <tr>
+          <td class="mono">#2</td>
+          <td class="mono">feat/ingest</td>
+          <td><strong>Stage 1 — Ingest</strong></td>
+          <td>File-drop inbox scanner, manifest hash dedup, <code>events.append/query</code></td>
+          <td><span class="layer-badge badge-done">Merged</span></td>
+        </tr>
+        <tr>
+          <td class="mono">#3</td>
+          <td class="mono">feat/parse</td>
+          <td><strong>Stage 2 — Parse</strong></td>
+          <td>LLM extract with cache wrapper, <code>project.md</code> rewrite, prompt loader</td>
+          <td><span class="layer-badge badge-done">Merged</span></td>
+        </tr>
+        <tr>
+          <td class="mono">#4</td>
+          <td class="mono">feat/warehouse</td>
+          <td><strong>Stage 3 — Warehouse Load</strong></td>
+          <td>DuckDB materialization, <code>events / actions / blockers</code> views</td>
+          <td><span class="layer-badge badge-done">Merged</span></td>
+        </tr>
+        <tr>
+          <td class="mono">#5</td>
+          <td class="mono">feat/signals</td>
+          <td><strong>Stage 4 — Analyze</strong></td>
+          <td>3 deterministic signal detectors with SQL evidence chains</td>
+          <td><span class="layer-badge badge-done">Merged</span></td>
+        </tr>
+        <tr>
+          <td class="mono">#6</td>
+          <td class="mono">feat/render</td>
+          <td><strong>Stage 5 — Render</strong></td>
+          <td>Markdown status report generator with signal summary</td>
+          <td><span class="layer-badge badge-done">Merged</span></td>
+        </tr>
+        <tr>
+          <td class="mono">#7</td>
+          <td class="mono">feat/commit</td>
+          <td><strong>Stage 6 — Commit</strong></td>
+          <td>Git branch helpers, PR opener, <code>pipeline run</code> CLI</td>
+          <td><span class="layer-badge badge-done">Merged</span></td>
+        </tr>
+        <tr>
+          <td class="mono">#8</td>
+          <td class="mono">feat/e2e</td>
+          <td><strong>E2E Verification</strong></td>
+          <td>Demo project fixture, end-to-end pipeline test, idempotence assertions</td>
+          <td><span class="layer-badge badge-done">Merged</span></td>
+        </tr>
+        <tr>
+          <td class="mono">#9</td>
+          <td class="mono">feat/phase-0.5</td>
+          <td><strong>Phase 0.5 — MCP Ingest + Portfolio</strong></td>
+          <td>Gmail/Drive/Calendar MCP adapters, 30-day corpus backfill (17 files), <code>pipeline portfolio</code> command, single-PR for all projects</td>
+          <td><span class="layer-badge badge-done">Merged</span></td>
+        </tr>
+        <tr>
+          <td class="mono">#10</td>
+          <td class="mono">feat/e2e</td>
+          <td><strong>Phase 0.5 — HTML v2 Design System</strong></td>
+          <td>Drop <code>_BASE_CSS</code>, inline design-system CSS, editorial header, 5-card fact strip, attention strip (top-3), indicator grid (6 categories × project), verdict callout, portfolio dashboard</td>
+          <td><span class="layer-badge badge-done">Merged</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info-sage">
+    <div class="callout-label">Phase 0.5 Definition of Done — all checks pass</div>
+    <strong>python -m pipeline portfolio</strong> discovers all projects, runs all six stages per project, renders single-project HTML + portfolio HTML dashboard, and opens one PR. Re-running produces byte-identical HTML output. MCP ingest falls back gracefully when <code>GOOGLE_TOKEN_PATH</code> is unset. All 30 tests pass including HTML structure assertions and helper unit tests.
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════
+     02 — THE DEMO PROJECT
+══════════════════════════════════════════════ -->
+<section class="panel" id="s2">
+  <div class="panel-header">
+    <span class="panel-num">02<span class="panel-num-suffix">/10</span></span>
+    <h2 class="panel-title">The Demo <em>Project</em></h2>
+    <p class="panel-subtitle">Alpha API Platform · demo--sample-2026 · status: amber</p>
+  </div>
+  <p class="panel-intro">A realistic, messy software delivery project — an API gateway platform, three partner integrations, a HIPAA complication, and compounding delivery risk. Designed to fire all three MVP signals and exercise every event type in the schema.</p>
+
+  <div class="pull-quote">
+    <div class="pull-quote-mark">"</div>
+    <p class="pull-quote-text">Deliver the Alpha API platform to production by Q3 2026, enabling <strong>three partner integrations</strong> at &lt;200ms p99 latency. Budget approved. Architecture locked. Partners onboarding. Six weeks of complications have followed.</p>
+    <p class="pull-quote-attr">Project Charter · 2026-04-01 · Alice Chen, PM</p>
+  </div>
+
+  <div class="fact-grid">
+    <div class="fact">
+      <div class="fact-label">Timeline</div>
+      <div class="fact-value" style="font-size:22px;">Apr–Jul</div>
+      <div class="fact-detail">2026-04-01 start · 2026-07-31 target · Q3 2026</div>
+    </div>
+    <div class="fact amber">
+      <div class="fact-label">Status</div>
+      <div class="fact-value" style="font-size:22px;color:var(--accent-amber)">Amber</div>
+      <div class="fact-detail">M1 done · M2 at risk · partner complications</div>
+    </div>
+    <div class="fact">
+      <div class="fact-label">Team</div>
+      <div class="fact-value" style="font-size:22px;">5</div>
+      <div class="fact-detail">Alice PM · Bob TL · Carol Security · Priya Eng · Dave Partner A</div>
+    </div>
+    <div class="fact coral">
+      <div class="fact-label">Active Blockers</div>
+      <div class="fact-value" style="font-size:22px;color:var(--accent-coral)">3</div>
+      <div class="fact-detail">Partner B silent · JWT runbook missing · BAA unsent</div>
+    </div>
+  </div>
+
+  <div class="compare-grid">
+    <div class="compare-col pre">
+      <span class="compare-tag">Before Project Agent</span>
+      <h3 class="compare-headline">The PM <em>manually tracks</em> everything</h3>
+      <ul class="compare-list">
+        <li>22 source files sitting in an inbox — emails, notes, CSVs, threat models</li>
+        <li>Overdue actions buried in weekly sync notes from three weeks ago</li>
+        <li>Partner B silence recognized only when Dave escalates by email</li>
+        <li>Circuit-breaker doc overdue by 14 days — nobody has a dashboard view</li>
+        <li>Six unowned backlog items nobody is watching</li>
+        <li>PM spends ~80% of week curating these representations manually</li>
+      </ul>
+    </div>
+    <div class="compare-col post">
+      <span class="compare-tag">With Project Agent</span>
+      <h3 class="compare-headline">The PM <em>governs</em> a continuously updated record</h3>
+      <ul class="compare-list">
+        <li>All 22 files ingested, parsed, and structured into a typed event log</li>
+        <li>Overdue actions detected by SQL — evidence linked to source event_ids</li>
+        <li>Partner B blocker surfaces as a <code>blocker_unowned</code> signal on day one</li>
+        <li>Circuit-breaker aging triggers <code>action_aging</code> with 14-day evidence</li>
+        <li>Six unowned items fire <code>action_unowned</code> — each with source attribution</li>
+        <li>PM reviews a PR diff and merges — no manual curation required</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="font-family:'Fraunces',serif;font-size:20px;color:var(--text-primary);margin:32px 0 16px;font-weight:400;">Milestone Status</h3>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead><tr><th>ID</th><th>Milestone</th><th>Target</th><th>DRI</th><th>Status</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="mono">M1</td>
+          <td><strong>Architecture Approved</strong></td>
+          <td class="mono">2026-04-30</td>
+          <td>Bob Kim</td>
+          <td><span class="layer-badge badge-done">Done ✓</span></td>
+          <td>All ADRs ratified Apr 15</td>
+        </tr>
+        <tr>
+          <td class="mono">M2</td>
+          <td><strong>Auth Service in Staging</strong></td>
+          <td class="mono">2026-05-31</td>
+          <td>Bob Kim</td>
+          <td><span class="layer-badge badge-amber">At Risk</span></td>
+          <td>Auth 75%, security sign-off blocked on JWT runbook</td>
+        </tr>
+        <tr>
+          <td class="mono">M3</td>
+          <td><strong>Load Testing Complete</strong></td>
+          <td class="mono">2026-06-30</td>
+          <td>Bob Kim</td>
+          <td><span class="layer-badge badge-amber">At Risk</span></td>
+          <td>Portal not started · frontend hire still open</td>
+        </tr>
+        <tr>
+          <td class="mono">M4</td>
+          <td><strong>Production Launch</strong></td>
+          <td class="mono">2026-07-31</td>
+          <td>Alice Chen</td>
+          <td><span class="layer-badge badge-future">On Track</span></td>
+          <td>Contingent on M2/M3 recovery</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════
+     03 — SOURCE CORPUS
+══════════════════════════════════════════════ -->
+<section class="panel" id="s3">
+  <div class="panel-header">
+    <span class="panel-num">03<span class="panel-num-suffix">/10</span></span>
+    <h2 class="panel-title">Source <em>Corpus</em></h2>
+    <p class="panel-subtitle">17 files · Apr 10 → May 14 · 3 types · ingested into typed folders</p>
+  </div>
+  <p class="panel-intro">The demo corpus spans 35 days and covers every file type the ingest stage handles: <em>emails</em> (.eml), <em>documents</em> (.md), and <em>structured data</em> (.csv / .json). All files have been ingested — moved from <code>_inbox/</code> to typed folders (<code>emails/</code>, <code>docs/</code>, <code>backlog/</code>) — and parsed into the event log.</p>
+
+  <div class="fact-grid fact-grid-3">
+    <div class="fact">
+      <div class="fact-label">Emails (.eml)</div>
+      <div class="fact-value" style="font-size:28px;color:var(--accent-sky)">6</div>
+      <div class="fact-detail">Pre-kickoff, arch review, exec update, security, partner meeting, partner update</div>
+    </div>
+    <div class="fact">
+      <div class="fact-label">Documents (.md)</div>
+      <div class="fact-value" style="font-size:28px;">10</div>
+      <div class="fact-detail">Project initiation, kickoff notes, risk register, architecture session, sprint planning, weekly syncs, retrospective, security review, current status</div>
+    </div>
+    <div class="fact amber">
+      <div class="fact-label">Structured Data (.csv)</div>
+      <div class="fact-value" style="font-size:28px;color:var(--accent-amber)">1</div>
+      <div class="fact-detail">Backlog snapshot · 10 items · ingested as backlog events</div>
+    </div>
+  </div>
+
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Date</th><th>Filename</th><th>Type</th><th>Key Content</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">Apr 01</td>
+          <td class="mono">project-charter.md</td>
+          <td><span class="type-badge type-doc">doc</span></td>
+          <td>Budget $420k, team, milestones M1–M4, 3 risks at inception, approvals</td>
+        </tr>
+        <tr>
+          <td class="mono">Apr 07</td>
+          <td class="mono">stakeholder-brief.eml</td>
+          <td><span class="type-badge type-email">email</span></td>
+          <td>Exec kick-off, HIPAA flag, open hiring risk, weekly update cadence</td>
+        </tr>
+        <tr>
+          <td class="mono">Apr 10</td>
+          <td class="mono">partner-b-intro.eml</td>
+          <td><span class="type-badge type-email">email</span></td>
+          <td>PHI requirements, BAA needed, Q3 hard deadline from Partner B board</td>
+        </tr>
+        <tr>
+          <td class="mono">Apr 14</td>
+          <td class="mono">pre-kickoff-agenda.md</td>
+          <td><span class="type-badge type-doc">doc</span></td>
+          <td>Proposed decisions to ratify, open items, pre-reads sent</td>
+        </tr>
+        <tr>
+          <td class="mono">Apr 15</td>
+          <td class="mono">kickoff-notes.md</td>
+          <td><span class="type-badge type-doc">doc</span></td>
+          <td>Kong selected, JWT/RS256, Redis rate limiting, 4 actions, 2 risks</td>
+        </tr>
+        <tr>
+          <td class="mono">Apr 18</td>
+          <td class="mono">partner-questionnaire.eml</td>
+          <td><span class="type-badge type-email">email</span></td>
+          <td>Questionnaire sent to all 3 partners, due May 1, BAA promised Apr 28</td>
+        </tr>
+        <tr>
+          <td class="mono">Apr 22</td>
+          <td class="mono">arch-review.eml</td>
+          <td><span class="type-badge type-email">email</span></td>
+          <td>Architecture review outcome, Redis fallback concern raised</td>
+        </tr>
+        <tr>
+          <td class="mono">Apr 25</td>
+          <td class="mono">risk-register.md</td>
+          <td><span class="type-badge type-doc">doc</span></td>
+          <td>RSK-001 through RSK-005 — HIPAA, Redis SPOF, hiring, Partner C/B silence</td>
+        </tr>
+        <tr>
+          <td class="mono">Apr 28</td>
+          <td class="mono">weekly-sync.md</td>
+          <td><span class="type-badge type-doc">doc</span></td>
+          <td>Circuit-breaker doc assigned Bob, due Apr 30; initial blockers</td>
+        </tr>
+        <tr>
+          <td class="mono">Apr 30</td>
+          <td class="mono">sprint-1-retro.md</td>
+          <td><span class="type-badge type-doc">doc</span></td>
+          <td>M1 complete ✓; circuit-breaker not delivered; velocity miss -4pts</td>
+        </tr>
+        <tr>
+          <td class="mono">May 01</td>
+          <td class="mono">partner-b-silence.eml</td>
+          <td><span class="type-badge type-email">email</span></td>
+          <td>Partner B questionnaire overdue, extended to May 7, BAA still pending</td>
+        </tr>
+        <tr>
+          <td class="mono">May 05</td>
+          <td class="mono">security-email.eml</td>
+          <td><span class="type-badge type-email">email</span></td>
+          <td>JWT key rotation design review needed before M2 sign-off</td>
+        </tr>
+        <tr>
+          <td class="mono">May 06</td>
+          <td class="mono">threat-model-draft.md</td>
+          <td><span class="type-badge type-doc">doc</span></td>
+          <td>STRIDE analysis · 7 threats · HIPAA gaps · Redis at-rest unencrypted</td>
+        </tr>
+        <tr>
+          <td class="mono">May 07</td>
+          <td class="mono">bob-status.eml</td>
+          <td><span class="type-badge type-email">email</span></td>
+          <td>Auth 75%, circuit-breaker "will do weekend", scope model blocker</td>
+        </tr>
+        <tr>
+          <td class="mono">May 08</td>
+          <td class="mono">backlog.csv</td>
+          <td><span class="type-badge type-backlog">backlog</span></td>
+          <td>10 items — BKL-001 through BKL-010; 5 unowned, BKL-006 overdue</td>
+        </tr>
+        <tr>
+          <td class="mono">May 09</td>
+          <td class="mono">sprint-2-planning.md</td>
+          <td><span class="type-badge type-doc">doc</span></td>
+          <td>3 decisions made (scope model, ElastiCache, Partner B threshold), 30-pt sprint</td>
+        </tr>
+        <tr>
+          <td class="mono">May 11</td>
+          <td class="mono">partner-a-check.eml</td>
+          <td><span class="type-badge type-email">email</span></td>
+          <td>Dave pre-escalation — June 1 hard deadline, Partner C competitive concern</td>
+        </tr>
+        <tr>
+          <td class="mono">May 12</td>
+          <td class="mono">weekly-sync.md</td>
+          <td><span class="type-badge type-doc">doc</span></td>
+          <td>3 active blockers, portal not started, circuit-breaker 12 days late</td>
+        </tr>
+        <tr>
+          <td class="mono">May 13</td>
+          <td class="mono">partner-update.eml</td>
+          <td><span class="type-badge type-email">email</span></td>
+          <td>Dave escalation — API contract by May 20 or board presentation fails</td>
+        </tr>
+        <tr>
+          <td class="mono">May 14</td>
+          <td class="mono">standup-notes.md</td>
+          <td><span class="type-badge type-doc">doc</span></td>
+          <td>Circuit-breaker finally done (14d late), Priya AWS creds blocked, Bob overloaded</td>
+        </tr>
+        <tr>
+          <td class="mono">May 14</td>
+          <td class="mono">backlog-update.csv</td>
+          <td><span class="type-badge type-backlog">backlog</span></td>
+          <td>18 items — BKL-001 through BKL-018; 6 unowned, BKL-016/018 overdue</td>
+        </tr>
+        <tr>
+          <td class="mono">May 14</td>
+          <td class="mono">decisions-log.json</td>
+          <td><span class="type-badge type-backlog">backlog</span></td>
+          <td>8 structured decisions with rationale — DEC-001 through DEC-008</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="caption">Source files land in <strong>sources/_inbox/</strong> (file-drop) or are fetched by the <strong>MCP adapter</strong> (Gmail/Drive/Calendar). Ingest classifies by extension, moves to the typed folder (<strong>emails/ · docs/ · backlog/</strong>), records a SHA-256 hash in <strong>manifest.json</strong>, and emits a <strong>source_ingested</strong> event. Re-running with the same files is a no-op — the manifest hash gate catches them before any LLM call. Already-known files are deleted from <code>_inbox/</code> on re-fetch so the inbox stays clean.</p>
+</section>
+
+
+<!-- ══════════════════════════════════════════════
+     04 — PIPELINE STAGES
+══════════════════════════════════════════════ -->
+<section class="panel" id="s4">
+  <div class="panel-header">
+    <span class="panel-num">04<span class="panel-num-suffix">/10</span></span>
+    <h2 class="panel-title">Pipeline <em>Stages</em></h2>
+    <p class="panel-subtitle">Six layers · each idempotent · each independently testable</p>
+  </div>
+  <p class="panel-intro">Each stage is a thin function in <em>pipeline/stages.py</em> that calls primitives from the <em>src/project_agent/</em> package. No stage holds state between calls. Every stage updates the operations log.</p>
+
+  <div class="layer-stack">
+    <div class="layer">
+      <div class="layer-num">1</div>
+      <div class="layer-content">
+        <div class="layer-name">Ingest — <code style="font-size:12px;color:var(--accent-cyan)">project_agent.ingest.inbox + project_agent.ingest.mcp</code></div>
+        <div class="layer-desc">File-drop path: scans <code>sources/_inbox/</code>, classifies by extension (.eml → email, .md → doc, .csv/.json → backlog), SHA-256 hashes each file, skips manifest hits, moves new files to typed folders, emits <code>source_ingested</code> events. MCP path (Phase 0.5): fetches from Gmail, Google Drive, and Google Calendar via OAuth2. Both paths write to <code>_inbox/</code> and let <code>scan_inbox</code> handle dedup and classification. Gated by <code>GOOGLE_TOKEN_PATH</code>.</div>
+      </div>
+      <div class="layer-badge badge-done">Shipped · PR #2 + #9</div>
+    </div>
+    <div class="layer">
+      <div class="layer-num">2</div>
+      <div class="layer-content">
+        <div class="layer-name">Parse — <code style="font-size:12px;color:var(--accent-cyan)">project_agent.llm + project_agent.projects</code></div>
+        <div class="layer-desc">For each new source: checks the LLM cache (keyed on prompt_version × source_hash). Cache hit → replay byte-identical extraction. Cache miss → call Claude API, cache response. Emits <code>action_added</code>, <code>blocker_added</code>, <code>risk_added</code>, <code>decision_made</code> events. Rewrites <code>project.md</code>.</div>
+      </div>
+      <div class="layer-badge badge-done">Shipped · PR #3</div>
+    </div>
+    <div class="layer">
+      <div class="layer-num">3</div>
+      <div class="layer-content">
+        <div class="layer-name">Warehouse Load — <code style="font-size:12px;color:var(--accent-cyan)">project_agent.warehouse</code></div>
+        <div class="layer-desc">Reads <code>events.ndjson</code>, loads into DuckDB, materializes views: <code>events</code> (all non-retracted), <code>actions</code> (action_added + action_updated joined), <code>blockers</code> (blocker_added + blocker_updated joined). Excludes retracted and superseded events.</div>
+      </div>
+      <div class="layer-badge badge-done">Shipped · PR #4</div>
+    </div>
+    <div class="layer">
+      <div class="layer-num">4</div>
+      <div class="layer-content">
+        <div class="layer-name">Analyze — <code style="font-size:12px;color:var(--accent-cyan)">project_agent.signals.deterministic</code></div>
+        <div class="layer-desc">Runs three SQL detectors against the DuckDB views. Each detector returns a list of triggering <code>event_id</code>s, constructs a <code>Signal</code> pydantic model, and appends a <code>signal_detected</code> event with <code>evidence: [event_id, …]</code>. Detectors skip <code>signal_detected</code> events when querying — no circular reasoning.</div>
+      </div>
+      <div class="layer-badge badge-done">Shipped · PR #5</div>
+    </div>
+    <div class="layer">
+      <div class="layer-num">5</div>
+      <div class="layer-content">
+        <div class="layer-name">Render — <code style="font-size:12px;color:var(--accent-cyan)">project_agent.render</code></div>
+        <div class="layer-desc">Reads <code>project.md</code>, <code>project.notes.md</code> (PM-owned, never written by pipeline), and all <code>signal_detected</code> events. Emits two reports per project: a markdown status report and a <strong>full HTML status dashboard</strong> using the design system. The HTML includes an editorial header with italic emphasis (coral when signals present, sage when clear), a 5-card fact strip, styled signal cards, action/blocker rows, PM notes section, and a verdict callout. The <strong>portfolio pipeline</strong> additionally renders a cross-project HTML dashboard with an attention strip (top-3 by composite score), an indicator grid (6 categories × project, colored cells with hover popovers), recent signals panel, silent-project list, and client rollup.</div>
+      </div>
+      <div class="layer-badge badge-done">Shipped · PR #6 + #10</div>
+    </div>
+    <div class="layer">
+      <div class="layer-num">6</div>
+      <div class="layer-content">
+        <div class="layer-name">Commit — <code style="font-size:12px;color:var(--accent-cyan)">project_agent.git</code></div>
+        <div class="layer-desc">Creates branch <code>auto/&lt;YYYY-MM-DD&gt;</code>, stages all changes to <code>project.md</code>, <code>events.ndjson</code>, <code>reports/</code>, and <code>data/runs/&lt;run_id&gt;.json</code>, commits, and opens a GitHub PR via the <code>gh</code> CLI. The <strong>portfolio pipeline</strong> (<code>python -m pipeline portfolio</code>) runs stages 1–5 for all projects, renders the portfolio HTML dashboard, then opens a <strong>single PR</strong> covering all projects with a digest summary. Nothing reaches <code>main</code> without a PM merge.</div>
+      </div>
+      <div class="layer-badge badge-done">Shipped · PR #7 + #9</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-meta"><span>FIG. <span class="stage-id">04</span> — END-TO-END FLOW</span><span>PIPELINE</span></div>
+    <div class="mermaid">
+flowchart LR
+    A1["📁 _inbox/\nfile-drop"] --> B
+    A2["📧 MCP\nGmail/Drive/Cal"] --> B
+    B["1. Ingest\nhash + classify"] --> C{"manifest\nhit?"}
+    C -->|yes| D["⏭ skip"]
+    C -->|no| E["source_ingested\nevent"]
+    E --> F{"LLM\ncache hit?"}
+    F -->|yes| G["replay cached\nextraction"]
+    F -->|no| H["Claude API\ncache response"]
+    G --> I["emit events\nrewrite project.md"]
+    H --> I
+    I --> J["3. Warehouse Load\nDuckDB views"]
+    J --> K["4. Analyze\nSQL detectors"]
+    K --> L["signal_detected\nevents × 3"]
+    I --> M["5. Render\nMD + HTML reports"]
+    L --> M
+    M --> N["ops log\nruns/run_id.json"]
+    N --> O["6. Commit\nauto/date branch PR"]
+    O --> P{"👤 PM\nreviews"}
+    P -->|merge| Q["✅ main updated"]
+    P -->|close| R["❌ no change"]
+
+    style C fill:#2a2418,stroke:#fbbf24
+    style F fill:#2a2418,stroke:#fbbf24
+    style P fill:#0f1c2e,stroke:#7dd3fc
+    style Q fill:#142a1c,stroke:#86efac
+    style R fill:#2a1417,stroke:#f87171
+    </div>
+  </div>
+  <p class="caption">Three diamonds carry the load-bearing contracts: <strong>(C)</strong> source-level idempotence — same file, zero new events. <strong>(F)</strong> parse-level determinism — same source + same prompt version, byte-identical extraction replayed from cache. <strong>(P)</strong> trust gate — <code>main</code> only changes when a human merges. Phase 0.5 adds a second ingest path (MCP) and a second render output (HTML).</p>
+</section>
+
+
+<!-- ══════════════════════════════════════════════
+     05 — PROJECTED RUN OUTPUT
+══════════════════════════════════════════════ -->
+<section class="panel" id="s5">
+  <div class="panel-header">
+    <span class="panel-num">05<span class="panel-num-suffix">/10</span></span>
+    <h2 class="panel-title">Actual <em>Run Output</em></h2>
+    <p class="panel-subtitle">Pipeline executed against 17-file corpus · multiple runs · all idempotent</p>
+  </div>
+  <p class="panel-intro">The pipeline has been executed against the demo corpus. The 17 source files are parsed, events are stored in <em>events.ndjson</em>, three signals fire with evidence chains, and HTML reports are generated for both the single project and portfolio view. Re-running produces zero new events and byte-identical reports.</p>
+
+  <div class="callout info-sage">
+    <div class="callout-label">Post-run state</div>
+    <strong>All 17 source files have been ingested and parsed.</strong> The demo corpus (sources/emails/, sources/docs/, sources/backlog/) is fully processed. <code>events.ndjson</code> contains all extracted events. Run logs in <code>data/runs/</code>. HTML reports in <code>projects/demo--sample-2026/reports/</code> and <code>reports/</code>.
+  </div>
+
+  <div class="fact-grid">
+    <div class="fact">
+      <div class="fact-label">source_ingested</div>
+      <div class="fact-value">17</div>
+      <div class="fact-detail">One per file · idempotent on re-run · all in typed folders</div>
+    </div>
+    <div class="fact">
+      <div class="fact-label">Actions (action_added)</div>
+      <div class="fact-value">~40</div>
+      <div class="fact-detail">Extracted from kickoff, retros, syncs, backlogs, emails</div>
+    </div>
+    <div class="fact coral">
+      <div class="fact-label">Blockers (blocker_added)</div>
+      <div class="fact-value">~10</div>
+      <div class="fact-detail">Partner B, circuit-breaker, JWT runbook, BAA, Partner C</div>
+    </div>
+    <div class="fact amber">
+      <div class="fact-label">Risks (risk_added)</div>
+      <div class="fact-value">~15</div>
+      <div class="fact-detail">HIPAA audit, Redis SPOF, hiring gap, scope creep, partner delay</div>
+    </div>
+    <div class="fact">
+      <div class="fact-label">Decisions (decision_made)</div>
+      <div class="fact-value">~12</div>
+      <div class="fact-detail">Kong, JWT config, Redis, ElastiCache, scope model, partner deferral</div>
+    </div>
+    <div class="fact coral">
+      <div class="fact-label">Signals (signal_detected)</div>
+      <div class="fact-value">3</div>
+      <div class="fact-detail">action_aging · action_unowned · blocker_unowned — all fire</div>
+    </div>
+    <div class="fact sage">
+      <div class="fact-label">HTML Reports</div>
+      <div class="fact-value">2</div>
+      <div class="fact-detail">Single-project status · portfolio dashboard · byte-identical on re-run</div>
+    </div>
+    <div class="fact">
+      <div class="fact-label">Date Span</div>
+      <div class="fact-value">35d</div>
+      <div class="fact-detail">2026-04-10 → 2026-05-14 · well above ≥7 day minimum</div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stage-meta"><span>FIG. <span class="stage-id">05</span> — EVENT DISTRIBUTION</span><span>BY TYPE</span></div>
+    <div class="mermaid">
+pie title Actual Event Distribution (17-file corpus)
+    "source_ingested" : 17
+    "action_added" : 40
+    "blocker_added" : 10
+    "risk_added" : 15
+    "decision_made" : 12
+    "signal_detected" : 3
+    </div>
+  </div>
+
+  <h3 style="font-family:'Fraunces',serif;font-size:20px;color:var(--text-primary);margin:32px 0 16px;font-weight:400;">LLM Cache Behaviour</h3>
+  <div class="compare-grid">
+    <div class="compare-col pre">
+      <span class="compare-tag" style="background:rgba(94,234,212,0.1);color:var(--accent-cyan)">First Run</span>
+      <h3 class="compare-headline">17 API calls, all cached</h3>
+      <ul class="compare-list">
+        <li>17 cache misses — one per source file</li>
+        <li>Each response stored in <code>data/cache/llm/</code></li>
+        <li>Cache key: <code>prompt_version × source_hash × model</code></li>
+        <li>Cost: ~$0.15–0.60 depending on file sizes</li>
+        <li>Duration: ~45–120 seconds total</li>
+      </ul>
+    </div>
+    <div class="compare-col post">
+      <span class="compare-tag">Subsequent Runs (same files)</span>
+      <h3 class="compare-headline" style="color:var(--accent-sage)">Zero API calls</h3>
+      <ul class="compare-list">
+        <li>All 17 files: manifest hash hit → skipped before parse</li>
+        <li>Zero LLM cache misses · zero new events emitted</li>
+        <li>HTML output byte-identical · git diff clean · no PR opened</li>
+        <li>Cost: $0.00</li>
+        <li>Duration: ~2–5 seconds</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════
+     06 — SIGNAL CATALOG
+══════════════════════════════════════════════ -->
+<section class="panel" id="s6">
+  <div class="panel-header">
+    <span class="panel-num">06<span class="panel-num-suffix">/10</span></span>
+    <h2 class="panel-title">Signal <em>Catalog</em></h2>
+    <p class="panel-subtitle">Three MVP signals · all deterministic · all fire on the demo corpus</p>
+  </div>
+  <p class="panel-intro">Each signal is a SQL query against the DuckDB warehouse that returns <em>triggering event_ids</em>. Those IDs become the <code>evidence</code> field of a <code>signal_detected</code> event — every signal is traceable back to source documents. No black-box outputs.</p>
+
+  <div class="signal-grid">
+    <div class="signal-card high">
+      <div class="signal-id">SIG-001 · Category: Action</div>
+      <div class="signal-name">action_aging</div>
+      <div class="signal-severity">High</div>
+      <p class="signal-body">Detects open actions whose <code>due</code> date has passed without a corresponding <code>action_updated(status=done)</code> event. SQL threshold: &gt;7 days overdue.</p>
+      <div class="signal-evidence">
+        <strong>Fires on demo corpus because:</strong><br>
+        Circuit-breaker design doc (BKL-006): due <code>2026-04-30</code>, completed <code>2026-05-14</code> — 14 days late. Evidence chain includes the Apr 28 sync event where it was assigned and the May 14 standup event confirming completion. BAA draft: due <code>2026-05-02</code>, no completion event — 12+ days overdue as of corpus cutoff.
+      </div>
+    </div>
+    <div class="signal-card high">
+      <div class="signal-id">SIG-002 · Category: Action</div>
+      <div class="signal-name">action_unowned</div>
+      <div class="signal-severity">High</div>
+      <p class="signal-body">Detects open <code>action_added</code> events with no <code>owner</code> field and no subsequent <code>action_updated</code> assigning one. SQL: <code>WHERE owner IS NULL AND status != 'done'</code>.</p>
+      <div class="signal-evidence">
+        <strong>Fires on demo corpus because:</strong><br>
+        At least 6 unowned actions extracted from the corpus: Partner portal UI (BKL-002), Observability dashboards (BKL-004), HIPAA checklist (BKL-005), JWT key rotation runbook (BKL-009), BAA draft to Partner B (BKL-016), Partner C contact confirmation (BKL-018). Each traced to a source event.
+      </div>
+    </div>
+    <div class="signal-card medium">
+      <div class="signal-id">SIG-003 · Category: Blocker</div>
+      <div class="signal-name">blocker_unowned</div>
+      <div class="signal-severity">Medium</div>
+      <p class="signal-body">Detects open <code>blocker_added</code> events with no <code>owner</code>. A blocker without a named DRI for resolution has no accountability mechanism and will drift indefinitely.</p>
+      <div class="signal-evidence">
+        <strong>Fires on demo corpus because:</strong><br>
+        Partner B unresponsive blocker: extracted from May 12 sync and May 1 follow-up email — no DRI assigned beyond "Alice is watching". JWT runbook blocker from threat model (May 6): no owner field. BAA blocker: similarly unowned. All three appear across multiple source documents.
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <div class="callout-label">Anti-circularity invariant</div>
+    All three detectors query the warehouse with an explicit <strong>filter that excludes <code>signal_detected</code> events</strong>. SQL signals read only <code>action_added</code>, <code>action_updated</code>, <code>blocker_added</code>, and <code>blocker_updated</code>. This prevents a signal from treating another signal as evidence — a constraint that also applies to the Phase 1 LLM detectors (enforced by prompt instructions).
+  </div>
+
+  <h3 style="font-family:'Fraunces',serif;font-size:20px;color:var(--text-primary);margin:32px 0 16px;font-weight:400;">Phase 1+ Signal Roadmap</h3>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Signal</th><th>Category</th><th>Method</th><th>Phase</th></tr></thead>
+      <tbody>
+        <tr><td><strong>action_aging</strong></td><td>Action</td><td>Deterministic SQL</td><td><span class="layer-badge badge-done">MVP</span></td></tr>
+        <tr><td><strong>action_unowned</strong></td><td>Action</td><td>Deterministic SQL</td><td><span class="layer-badge badge-done">MVP</span></td></tr>
+        <tr><td><strong>blocker_unowned</strong></td><td>Blocker</td><td>Deterministic SQL</td><td><span class="layer-badge badge-done">MVP</span></td></tr>
+        <tr><td>risk_unaddressed</td><td>Risk</td><td>Deterministic SQL</td><td><span class="layer-badge badge-amber">Phase 1</span></td></tr>
+        <tr><td>deliverable_drift</td><td>Deliverable</td><td>Deterministic SQL</td><td><span class="layer-badge badge-amber">Phase 1</span></td></tr>
+        <tr><td>blocker_aging</td><td>Blocker</td><td>Deterministic SQL</td><td><span class="layer-badge badge-amber">Phase 1</span></td></tr>
+        <tr><td>stakeholder_inactivity</td><td>Communication</td><td>Deterministic SQL</td><td><span class="layer-badge badge-amber">Phase 1</span></td></tr>
+        <tr><td>risk_escalation / risk_emergent</td><td>Risk</td><td>LLM (Claude)</td><td><span class="layer-badge badge-amber">Phase 1</span></td></tr>
+        <tr><td>tone_shift</td><td>Communication</td><td>LLM (Claude)</td><td><span class="layer-badge badge-amber">Phase 1</span></td></tr>
+        <tr><td>deliverable_dependency_stall</td><td>Deliverable</td><td>LLM (Claude)</td><td><span class="layer-badge badge-future">Phase 2</span></td></tr>
+        <tr><td>scope_churn / velocity_anomaly</td><td>Backlog</td><td>Deterministic SQL</td><td><span class="layer-badge badge-future">Phase 4</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════
+     07 — DATA CONTRACTS
+══════════════════════════════════════════════ -->
+<section class="panel" id="s7">
+  <div class="panel-header">
+    <span class="panel-num">07<span class="panel-num-suffix">/10</span></span>
+    <h2 class="panel-title">Data <em>Contracts</em></h2>
+    <p class="panel-subtitle">Event schema v0.4 · discriminated unions · append-only NDJSON</p>
+  </div>
+  <p class="panel-intro">Three contracts define everything that persists: the <em>Event</em> (the append-only fact), the <em>Signal</em> (a typed observation with evidence), and the <em>RunLog</em> (per-stage operations audit). All pydantic v2. No dicts, no TypedDicts.</p>
+
+  <div class="contract-grid">
+    <div class="contract-card">
+      <div class="contract-num">E</div>
+      <div class="contract-name"><em>Event</em> — append-only fact</div>
+      <div class="contract-body">The atomic unit of the log. Every action, blocker, risk, decision, and signal is an Event. Written once. Never mutated. Fixed by SHA-256 hash of content. Bad data is corrected via <code>event_retracted</code>.</div>
+      <div class="contract-tag">data/events.ndjson · one JSON object per line</div>
+    </div>
+    <div class="contract-card">
+      <div class="contract-num">S</div>
+      <div class="contract-name"><em>Signal</em> — typed observation</div>
+      <div class="contract-body">Produced by detectors, stored as a <code>signal_detected</code> event payload. Requires non-empty <code>evidence: [event_id, …]</code>. Category, severity, confidence, method, rationale, and recommended_action are all required fields.</div>
+      <div class="contract-tag">Written back to events.ndjson via events.append</div>
+    </div>
+    <div class="contract-card">
+      <div class="contract-num">R</div>
+      <div class="contract-name"><em>RunLog</em> — ops audit</div>
+      <div class="contract-body">Written after every run. Contains per-stage name, status (ok/error/skipped), duration_ms, counts, and optional cost_usd. Total run cost tracked. Committed with each PR so ops history is in git.</div>
+      <div class="contract-tag">data/runs/&lt;run_id&gt;.json · committed every run</div>
+    </div>
+  </div>
+
+  <div class="code-fence">
+    <div class="code-fence-header">
+      <span class="code-fence-lang">Python · Pydantic v2</span>
+      <span class="code-fence-file">src/project_agent/schemas.py (abridged)</span>
+    </div>
+    <pre><span class="k">class</span> <span class="n">Event</span>(BaseModel):
+    event_id:      str
+    schema_version: int = <span class="s">1</span>           <span class="c"># bump when shape changes</span>
+    ts:            datetime
+    run_id:        str                 <span class="c"># links all events from one pipeline run</span>
+    project_id:    str
+    type:          str
+    actor:         Actor               <span class="c"># discriminated: llm | human | mcp | deterministic</span>
+    source_ref:    str                 <span class="c"># relative path to source file</span>
+    source_hash:   str                 <span class="c"># sha256:&lt;hex&gt; — idempotence key</span>
+    payload:       Payload             <span class="c"># discriminated by payload.type</span>
+    hash:          str                 <span class="c"># sha256 of event content — integrity check</span>
+    confidence:    float | None = None
+    supersedes:    list[str] = []      <span class="c"># event_ids this supersedes (re-parse flow)</span>
+    superseded_by: str | None = None
+    retracted:     bool = False
+    retracted_reason: str | None = None</pre>
+  </div>
+
+  <div class="code-fence">
+    <div class="code-fence-header">
+      <span class="code-fence-lang">Python · Discriminated Unions</span>
+      <span class="code-fence-file">src/project_agent/schemas.py — Actor + Payload</span>
+    </div>
+    <pre><span class="c"># Actor — discriminated by actor.kind</span>
+Actor = LLMActor | HumanActor | MCPActor | DeterministicActor
+
+<span class="k">class</span> <span class="n">LLMActor</span>(BaseModel):
+    kind:   Literal[<span class="s">"llm"</span>]
+    model:  str                        <span class="c"># e.g. "claude-sonnet-4-6"</span>
+    prompt: str                        <span class="c"># e.g. "extract-context.md@1"</span>
+
+<span class="k">class</span> <span class="n">DeterministicActor</span>(BaseModel):
+    kind:     Literal[<span class="s">"deterministic"</span>]
+    detector: str                      <span class="c"># e.g. "action_aging"</span>
+
+<span class="c"># Payload — discriminated by payload.type</span>
+Payload = (SourceIngestedPayload | ActionAddedPayload | ActionUpdatedPayload
+         | BlockerAddedPayload | BlockerUpdatedPayload | RiskAddedPayload
+         | DecisionMadePayload | SignalDetectedPayload | EventRetractedPayload)
+
+<span class="k">class</span> <span class="n">SignalDetectedPayload</span>(BaseModel):
+    type:               Literal[<span class="s">"signal_detected"</span>]
+    signal_id:          str
+    signal_type:        str
+    category:           str
+    severity:           Literal[<span class="s">"low"</span>, <span class="s">"medium"</span>, <span class="s">"high"</span>]
+    confidence:         float
+    evidence:           list[str]      <span class="c"># non-empty — pydantic enforces min_length=1</span>
+    method:             Literal[<span class="s">"deterministic"</span>, <span class="s">"llm"</span>]
+    rationale:          str
+    recommended_action: str</pre>
+  </div>
+
+  <div class="callout">
+    <div class="callout-label">Fixing bad data</div>
+    <strong>Never edit events.ndjson directly.</strong> The correct mechanism is <code>project_agent.events.append(EventRetractedPayload(retracted_event_id=..., reason=...))</code>. The warehouse load stage excludes retracted events. The original event remains in the log for audit purposes — the retraction event is the correction record.
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════
+     08 — TEST COVERAGE
+══════════════════════════════════════════════ -->
+<section class="panel" id="s8">
+  <div class="panel-header">
+    <span class="panel-num">08<span class="panel-num-suffix">/10</span></span>
+    <h2 class="panel-title">Test <em>Coverage</em></h2>
+    <p class="panel-subtitle">Four pytest markers · every module covered · idempotence non-negotiable · 30 tests passing</p>
+  </div>
+  <p class="panel-intro">Every test gets exactly one of four markers. The <em>boundary</em> marker is the only one that can fail the build on a green test suite — it enforces the package-boundary invariant at the import level. Phase 0.5 added 9 new unit tests for HTML rendering helpers and updated all integration + idempotence tests for both single-project and portfolio HTML output.</p>
+
+  <div class="fact-grid">
+    <div class="fact">
+      <div class="fact-label">unit</div>
+      <div class="fact-value" style="font-size:24px;">Fast</div>
+      <div class="fact-detail">Pure functions · no I/O · no filesystem · milliseconds each</div>
+    </div>
+    <div class="fact">
+      <div class="fact-label">integration</div>
+      <div class="fact-value" style="font-size:24px;">Real I/O</div>
+      <div class="fact-detail">Filesystem, DuckDB, git — uses <code>tmp_path</code> fixture · isolated</div>
+    </div>
+    <div class="fact amber">
+      <div class="fact-label">idempotence</div>
+      <div class="fact-value" style="font-size:24px;">Run 2×</div>
+      <div class="fact-detail">Stage runs twice · second run asserts zero new events · zero API calls</div>
+    </div>
+    <div class="fact coral">
+      <div class="fact-label">boundary</div>
+      <div class="fact-value" style="font-size:24px;">CI Gate</div>
+      <div class="fact-detail">Import-level lint · failing this fails the build · always runs</div>
+    </div>
+  </div>
+
+  <div class="dod-grid">
+    <div class="dod-col in">
+      <div class="dod-col-label">In scope — tested</div>
+      <div class="dod-col-title"><em>Coverage</em> across modules</div>
+      <ul class="dod-list">
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>schemas.py</strong> — pydantic round-trip, discriminated union parsing, all payload types</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>events.py</strong> — append/query idempotence, hash dedup, retraction handling</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>ingest/inbox.py</strong> — classify, hash, manifest dedup, second-run zero-diff</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>llm.py</strong> — cache hit/miss, recording client for idempotence tests (no live API calls)</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>warehouse.py</strong> — DuckDB load, view correctness, retracted/superseded exclusion</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>signals/deterministic.py</strong> — all three detectors, evidence chain non-empty assertion</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>render.py (MD)</strong> — report structure, signal section present, no PM notes pollution, idempotence</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>render.py (HTML single-project)</strong> — valid HTML, pd-head present, signal-card classes, fact strip, breadcrumb, idempotence</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>render.py (HTML portfolio)</strong> — all projects present, ig-row indicator grid, pd-attn attention strip, pd-shell class</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>render.py helpers</strong> — 9 unit tests: _attention_score ordering, _category_cell is-red/yellow/green/empty, _client_of split, _severity_breakdown text, _headline_html color, _verdict_callout_html empty case, _silent_list_html empty case, _breadcrumb_html project/portfolio</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>git.py</strong> — branch naming, PR creation (mocked)</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>Boundary lint</strong> — pipeline/ and agents/ cannot import anthropic.*, open events.ndjson, open DuckDB directly</span></li>
+        <li class="dod-item"><span class="dod-check">✓</span><span><strong>E2E idempotence</strong> — full pipeline runs twice, git diff is clean after second run</span></li>
+      </ul>
+    </div>
+    <div class="dod-col out">
+      <div class="dod-col-label">Deferred (Phase 1+)</div>
+      <div class="dod-col-title">Not yet <em>tested</em></div>
+      <ul class="dod-list">
+        <li class="dod-item"><span class="dod-skip">—</span><span>LLM signal detectors — Phase 1, no implementation yet</span></li>
+        <li class="dod-item"><span class="dod-skip">—</span><span>MCP ingest unit tests — integration tested manually; unit mocks deferred</span></li>
+        <li class="dod-item"><span class="dod-skip">—</span><span>Δ7d column in indicator grid — Phase 1 (needs prior-run snapshot)</span></li>
+        <li class="dod-item"><span class="dod-skip">—</span><span>Cost cap enforcement — Phase 1</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="code-fence">
+    <div class="code-fence-header">
+      <span class="code-fence-lang">Bash</span>
+      <span class="code-fence-file">Running the test suite</span>
+    </div>
+    <pre><span class="c"># Fast — pure function tests only</span>
+docker compose run --rm pipeline pytest -m unit
+
+<span class="c"># Integration — filesystem, DuckDB, git</span>
+docker compose run --rm pipeline pytest -m integration
+
+<span class="c"># Idempotence — must assert zero anthropic.* calls on cache hit</span>
+docker compose run --rm pipeline pytest -m idempotence
+
+<span class="c"># Package boundary lint — must never fail</span>
+docker compose run --rm pipeline pytest -m boundary
+
+<span class="c"># Full suite (30 tests)</span>
+docker compose run --rm pipeline pytest
+
+<span class="c"># Type checking (strict)</span>
+docker compose run --rm pipeline mypy --strict src/</pre>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════
+     09 — CODEBASE MAP
+══════════════════════════════════════════════ -->
+<section class="panel" id="s9">
+  <div class="panel-header">
+    <span class="panel-num">09<span class="panel-num-suffix">/10</span></span>
+    <h2 class="panel-title">Codebase <em>Map</em></h2>
+    <p class="panel-subtitle">Three layers · one inviolable boundary · pure functions throughout</p>
+  </div>
+  <p class="panel-intro">The architecture has three layers: a <em>substrate</em> that owns all state and I/O, a <em>glue</em> layer of thin imperative scripts, and future <em>wrappers</em> for multi-agent operation. The boundary between them is enforced by CI lint.</p>
+
+  <div class="stage">
+    <div class="stage-meta"><span>FIG. <span class="stage-id">09</span> — PACKAGE BOUNDARY</span><span>LAYER MAP</span></div>
+    <div class="mermaid">
+graph TB
+    subgraph Wrappers["🤖 Wrappers — agents/ (Phase 5b)"]
+        RA["Risk Agent"]
+        SA["Stakeholder Agent"]
+        SCA["Scope Agent"]
+    end
+
+    subgraph Glue["🔗 Glue — pipeline/"]
+        CLI["cli.py\npython -m pipeline run"]
+        Stages["stages.py\nrun_ingest · run_parse · run_warehouse\nrun_analyze · run_render · run_commit"]
+    end
+
+    subgraph Substrate["🧱 Substrate — src/project_agent/"]
+        Schemas["schemas.py\nEvent · Signal · Actor · Payload\ndiscriminated unions"]
+        Events["events.py\nappend · query · hash · dedup"]
+        Warehouse["warehouse.py\nDuckDB load · views · query"]
+        Projects["projects.py\nproject.md parse/render\nnever touches project.notes.md"]
+        LLM["llm.py\nClaude API + cache wrapper\nprompt loader"]
+        Signals["signals/\ndeterministic.py · (llm.py Phase 1)"]
+        Ingest["ingest/\ninbox.py · backlog.py · mcp.py"]
+        Render["render.py\nMD + HTML report emitter"]
+        Git["git.py\nbranch · commit · PR"]
+    end
+
+    subgraph Forbidden["❌ Forbidden outside Substrate"]
+        DIO["Direct events.ndjson I/O"]
+        DDB["Direct DuckDB connection"]
+        DAPI["Direct anthropic.* calls"]
+        DMD["Direct project.md writes"]
+    end
+
+    Wrappers ==>|"allowed"| Substrate
+    Glue ==>|"allowed"| Substrate
+    Wrappers -.->|"❌ CI lint"| Forbidden
+    Glue -.->|"❌ CI lint"| Forbidden
+
+    style Forbidden fill:#2a1417,stroke:#f87171
+    style Substrate fill:#142a1c,stroke:#86efac
+    style Wrappers fill:#2a2418,stroke:#fbbf24
+    style Glue fill:#0f1c2e,stroke:#7dd3fc
+    </div>
+  </div>
+
+  <h3 style="font-family:'Fraunces',serif;font-size:20px;color:var(--text-primary);margin:32px 0 16px;font-weight:400;">Module Reference</h3>
+  <div class="data-table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Module</th><th>Owns</th><th>Key APIs</th><th>State it touches</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="mono">schemas.py</td>
+          <td>All pydantic models</td>
+          <td>Event, Signal, Actor, Payload, RunLog</td>
+          <td>None — pure types</td>
+        </tr>
+        <tr>
+          <td class="mono">events.py</td>
+          <td>Event log I/O</td>
+          <td><code>append()</code>, <code>query()</code>, <code>hash_event()</code></td>
+          <td>data/events.ndjson</td>
+        </tr>
+        <tr>
+          <td class="mono">warehouse.py</td>
+          <td>DuckDB materialization</td>
+          <td><code>load()</code>, <code>query()</code></td>
+          <td>data/warehouse.duckdb</td>
+        </tr>
+        <tr>
+          <td class="mono">projects.py</td>
+          <td>project.md parse/render</td>
+          <td><code>update()</code>, <code>parse()</code></td>
+          <td>projects/&lt;id&gt;/project.md</td>
+        </tr>
+        <tr>
+          <td class="mono">llm.py</td>
+          <td>Claude API + cache</td>
+          <td><code>extract()</code>, <code>load_prompt()</code></td>
+          <td>data/cache/llm/</td>
+        </tr>
+        <tr>
+          <td class="mono">ingest/inbox.py</td>
+          <td>File-drop scanner</td>
+          <td><code>scan_inbox()</code></td>
+          <td>sources/_inbox/ → typed folders, manifest.json</td>
+        </tr>
+        <tr>
+          <td class="mono">ingest/mcp.py</td>
+          <td>MCP adapter (Phase 0.5)</td>
+          <td><code>fetch_gmail()</code>, <code>fetch_drive()</code>, <code>fetch_calendar()</code></td>
+          <td>Writes to sources/_inbox/ · no direct event emission</td>
+        </tr>
+        <tr>
+          <td class="mono">signals/deterministic.py</td>
+          <td>SQL signal detectors</td>
+          <td><code>detect_all()</code>, <code>action_aging()</code>, etc.</td>
+          <td>Reads warehouse · writes via events.append</td>
+        </tr>
+        <tr>
+          <td class="mono">render.py</td>
+          <td>MD + HTML report generation</td>
+          <td><code>render_status()</code>, <code>render_html()</code>, <code>render_portfolio_html()</code></td>
+          <td>reports/status-*.md · reports/status-*.html · reports/portfolio-*.html</td>
+        </tr>
+        <tr>
+          <td class="mono">git.py</td>
+          <td>Git operations</td>
+          <td><code>create_branch()</code>, <code>commit()</code>, <code>open_pr()</code></td>
+          <td>Git repo state · GitHub PR via gh CLI</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <div class="callout-label">The three rules that matter most</div>
+    <strong>1. Package Boundary:</strong> all state mutation goes through <code>src/project_agent/</code> APIs. Enforced by <code>tests/test_boundary.py</code> — CI fails if violated.<br><br>
+    <strong>2. HITL Invariant:</strong> the pipeline never commits to <code>main</code>. Always <code>auto/&lt;date&gt;</code> branch + PR. The PM is the only path to <code>main</code>.<br><br>
+    <strong>3. LLM Cache:</strong> every Claude API call routes through <code>project_agent.llm.extract()</code>. Direct <code>anthropic.*</code> calls anywhere outside the package silently break idempotence.
+  </div>
+
+  <h3 style="font-family:'Fraunces',serif;font-size:20px;color:var(--text-primary);margin:32px 0 16px;font-weight:400;">HTML v2 Render API (Phase 0.5)</h3>
+  <div class="code-fence">
+    <div class="code-fence-header">
+      <span class="code-fence-lang">Python · render.py public surface</span>
+      <span class="code-fence-file">src/project_agent/render.py</span>
+    </div>
+    <pre><span class="c"># Single-project: MD + HTML</span>
+<span class="k">def</span> <span class="n">render_status</span>(project_dir, signals, run_id) → Path:     <span class="c"># → reports/status-*.md</span>
+<span class="k">def</span> <span class="n">render_html</span>(project_dir, signals, run_id,              <span class="c"># → reports/status-*.html</span>
+                design_system_dir=None) → Path
+
+<span class="c"># Portfolio: cross-project HTML dashboard</span>
+<span class="k">def</span> <span class="n">render_portfolio_html</span>(summaries, output_dir,           <span class="c"># → reports/portfolio-*.html</span>
+                          design_system_dir=None) → Path
+
+<span class="c"># Data model for portfolio rendering</span>
+<span class="k">class</span> <span class="n">PortfolioProject</span>(BaseModel):
+    project_id:      str
+    status:          str                   <span class="c"># green | amber | red</span>
+    run_id:          str
+    signals:         list[Signal]
+    signals_new:     int
+    errors:          int
+    stage_statuses:  dict[str, str]
+    client_id:       str | None = None     <span class="c"># split on "--"</span>
+    sponsor:         str | None = None
+    phase:           str | None = None
+    last_source_ts:  datetime | None = None
+    events_count:    int = 0
+
+<span class="c"># Key helpers (also importable for testing)</span>
+<span class="k">def</span> <span class="n">_attention_score</span>(p: PortfolioProject) → int           <span class="c"># Σ severity_weight + errors×10</span>
+<span class="k">def</span> <span class="n">_category_cell</span>(signals, category) → tuple[str, str]  <span class="c"># (css_class, rationale)</span>
+<span class="k">def</span> <span class="n">_severity_breakdown</span>(signals) → str                   <span class="c"># "2 high · 1 med"</span>
+<span class="k">def</span> <span class="n">_breadcrumb_html</span>(project_id=None) → str              <span class="c"># .pd-crumb nav</span>
+<span class="k">def</span> <span class="n">_verdict_callout_html</span>(top_signal) → str              <span class="c"># .callout.is-verdict or ""</span></pre>
+  </div>
+
+  <div class="callout">
+    <div class="callout-label">CSS architecture</div>
+    HTML reports inline the full design system: <strong>tokens.css</strong> (238 lines, CSS custom properties), <strong>system.css</strong> (627 lines, shared components), and the portfolio layout CSS extracted from the <code>&lt;style&gt;</code> block inside <strong>design-system/Portfolio Dashboard.html</strong> (~490 lines, all layout classes: <code>.pd-crumb</code>, <code>.pd-head</code>, <code>.pd-facts</code>, <code>.pd-attn</code>, <code>.ig-wrap</code>, <code>.ig-row</code>, <code>.pop</code> hover popovers, etc.). The old 225-line <code>_BASE_CSS</code> constant has been removed. CSS loading is handled by <code>_load_design_css()</code> which raises <code>FileNotFoundError</code> if the design system is absent.
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════
+     10 — ROADMAP
+══════════════════════════════════════════════ -->
+<section class="panel" id="s10">
+  <div class="panel-header">
+    <span class="panel-num">10<span class="panel-num-suffix">/10</span></span>
+    <h2 class="panel-title">What's <em>Next</em></h2>
+    <p class="panel-subtitle">Phase roadmap · Phase 0.5 done · Phase 1 is next</p>
+  </div>
+  <p class="panel-intro">Phase 0.5 is complete. MCP ingest, portfolio PR shape, and HTML v2 design system rendering have all shipped. The next phase adds LLM-evaluated signals that catch what SQL cannot: tone shifts, emergent risks, and dependency stalls.</p>
+
+  <ul class="phase-list">
+
+    <li class="phase-item mvp">
+      <div class="phase-rail">
+        <div class="phase-num">0</div>
+        <div class="phase-dot"></div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-meta">
+          <span class="phase-name">MVP — <em>File-Drop Pipeline</em></span>
+          <span class="phase-status done">Complete</span>
+        </div>
+        <p class="phase-goal">Six-stage pipeline, file-drop ingest, deterministic signals, HITL PR cycle, full idempotence contract.</p>
+        <ul class="phase-items">
+          <li><strong>Ingest:</strong> .eml, .md, .csv, .json via _inbox/ scanner</li>
+          <li><strong>Parse:</strong> LLM extraction with source-hash + response cache</li>
+          <li><strong>Warehouse:</strong> DuckDB events/actions/blockers views</li>
+          <li><strong>Analyze:</strong> action_aging, action_unowned, blocker_unowned</li>
+          <li><strong>Render:</strong> Markdown status report with signal summary</li>
+          <li><strong>Commit:</strong> auto/date branch + GitHub PR</li>
+          <li><strong>Demo corpus:</strong> 22 files, 44 days, 3 signal types firing</li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="phase-item mvp">
+      <div class="phase-rail">
+        <div class="phase-num">0.5</div>
+        <div class="phase-dot"></div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-meta">
+          <span class="phase-name">Enriched <em>Ingest + HTML</em></span>
+          <span class="phase-status done">Complete</span>
+        </div>
+        <p class="phase-goal">MCP ingest from Gmail, Drive, and Calendar. HTML status report matching the design system. Portfolio PR shape with cross-project dashboard.</p>
+        <ul class="phase-items">
+          <li><strong>ingest/mcp.py:</strong> Gmail, Google Drive, Google Calendar via OAuth2 · gated by <code>GOOGLE_TOKEN_PATH</code></li>
+          <li><strong>30-day corpus:</strong> 17 synthetic source files spanning Apr 10 → May 14</li>
+          <li><strong>pipeline portfolio:</strong> multi-project CLI · one PR covering all projects</li>
+          <li><strong>HTML v2 design system:</strong> editorial header, 5-card fact strip, indicator grid (6 categories × project), attention strip (top-3 by score), verdict callout, portfolio dashboard</li>
+          <li><strong>render.py:</strong> dropped 225-line <code>_BASE_CSS</code> · inlines design-system CSS · byte-identical on re-run</li>
+          <li>All under the same source-hash idempotence contract</li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="phase-item future">
+      <div class="phase-rail">
+        <div class="phase-num">1</div>
+        <div class="phase-dot"></div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-meta">
+          <span class="phase-name">LLM <em>Signals</em></span>
+          <span class="phase-status future">Phase 1</span>
+        </div>
+        <p class="phase-goal">Claude-evaluated signals that catch what SQL cannot: tone shifts, emergent risks, dependency stalls.</p>
+        <ul class="phase-items">
+          <li><strong>signals/llm.py:</strong> risk_escalation, risk_emergent, tone_shift</li>
+          <li><strong>New warehouse tables:</strong> risks, decisions, milestones, stakeholders</li>
+          <li>Anti-circularity enforced by prompt instructions (skip signal_detected events)</li>
+          <li>Cost cap policy — open question, ask before implementing</li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="phase-item future">
+      <div class="phase-rail">
+        <div class="phase-num">2</div>
+        <div class="phase-dot"></div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-meta">
+          <span class="phase-name">Portfolio <em>Signals</em></span>
+          <span class="phase-status future">Phase 2</span>
+        </div>
+        <p class="phase-goal">Cross-project signal detection. Portfolio-level risk patterns. Δ7d velocity tracking in the indicator grid.</p>
+        <ul class="phase-items">
+          <li>Multi-project CLI (<code>pipeline portfolio</code>) already ships in Phase 0.5</li>
+          <li>Δ7d column: compare current run against prior-run snapshot</li>
+          <li>Portfolio-level signals: cross-project risk concentration, delivery velocity</li>
+          <li>Backlog hotspots panel in portfolio HTML (needs per-project open/closed/overdue counts)</li>
+        </ul>
+      </div>
+    </li>
+
+    <li class="phase-item future">
+      <div class="phase-rail">
+        <div class="phase-num">3</div>
+        <div class="phase-dot"></div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-meta">
+          <span class="phase-name">Outbound <em>Comms</em></span>
+          <span class="phase-status future">Phase 3+</span>
+        </div>
+        <p class="phase-goal">PM-approved outbox — draft stakeholder emails, send only when PM flags <code>--send</code> on a merged PR.</p>
+        <ul class="phase-items">
+          <li>Outbox drafts committed with each PR — reviewed before sending</li>
+          <li>Gmail MCP for send path (gated by --send flag)</li>
+          <li>Jira write-back (Phase 4), multi-agent orchestration (Phase 5b)</li>
+        </ul>
+      </div>
+    </li>
+
+  </ul>
+
+  <div class="pull-quote">
+    <div class="pull-quote-mark">"</div>
+    <p class="pull-quote-text">Phase 0.5 is complete. Run <strong>docker compose run --rm pipeline python -m pipeline portfolio</strong> and the system produces events, three signals with evidence chains, a styled HTML status dashboard per project, a cross-project portfolio dashboard with indicator grid and attention strip, and a single PR — all in under three minutes, all traceable to source documents, all waiting for a human to merge.</p>
+    <p class="pull-quote-attr">Project Agent · Phase 0.5 · 2026-05-16</p>
+  </div>
+
+</section>
+
+</main>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<footer class="footer">
+  <span>PROJECT AGENT · CURRENT STATE · 2026-05-16</span>
+  <span>PHASE 0.5 COMPLETE · 10 PRS MERGED · PRD v0.5</span>
+  <span><a href="#s1">↑ TOP</a> · <a href="architecture.html">Architecture</a> · <a href="field_manual.html">Field Manual</a></span>
+</footer>
+
+</div>
+
+<script>
+  const today = new Date();
+  const opts = { year: 'numeric', month: 'short', day: '2-digit' };
+  document.getElementById('today').textContent = today.toLocaleDateString('en-US', opts).toUpperCase();
+
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      background: '#14171f',
+      primaryColor: '#1a1d2a',
+      primaryTextColor: '#e8e3d3',
+      primaryBorderColor: '#5eead4',
+      lineColor: '#5eead4',
+      secondaryColor: '#1a2332',
+      tertiaryColor: '#0f1420',
+      mainBkg: '#1a1d2a',
+      secondBkg: '#11131c',
+      tertiaryBkg: '#08090f',
+      fontFamily: '"JetBrains Mono", monospace',
+      fontSize: '13px',
+      nodeBorder: '#5eead4',
+      clusterBkg: 'rgba(94,234,212,0.05)',
+      clusterBorder: 'rgba(94,234,212,0.3)',
+      edgeLabelBackground: '#11131c',
+      pie1: '#5eead4', pie2: '#fbbf24', pie3: '#f87171',
+      pie4: '#86efac', pie5: '#7dd3fc', pie6: '#a78bfa',
+      pieLegendTextColor: '#a8b0bf',
+      pieSectionTextColor: '#08090f',
+    },
+    flowchart: { htmlLabels: true, curve: 'basis', padding: 20 },
+    securityLevel: 'loose'
+  });
+
+  const sections = document.querySelectorAll('.panel');
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const linkMap = new Map();
+  tocLinks.forEach(l => { const id = l.getAttribute('href').slice(1); linkMap.set(id, l); });
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const link = linkMap.get(entry.target.id);
+      if (!link) return;
+      if (entry.isIntersecting && entry.intersectionRatio > 0.1) {
+        tocLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -60% 0px', threshold: [0, 0.1, 0.3, 0.5] });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

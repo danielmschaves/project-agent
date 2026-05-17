@@ -1,0 +1,25 @@
+From: integration@partnerb-health.com
+To: alice.chen@example.com
+Date: Fri, 10 Apr 2026 14:32:00 +0000
+Subject: Re: Alpha API Platform — Partner Onboarding Introduction
+
+Hi Alice,
+
+Thanks for reaching out. We are very interested in the integration.
+
+A few things from our side:
+- Our data includes PHI (Protected Health Information). Any API integration must be
+  HIPAA-compliant end-to-end, including at-rest encryption and audit logging.
+- We will require a BAA (Business Associate Agreement) before we can share test data.
+- Our internal security team will need to review your auth model before we sign off.
+
+We have a hard deadline: our board has approved this integration contingent on going
+live in Q3. If we miss Q3, the project will be re-evaluated in Q1 2027.
+
+Please send the onboarding questionnaire when ready. Our technical contact is
+Dr. Sarah Lee (sarah.lee@partnerb-health.com).
+
+Looking forward to working together.
+
+Regards,
+Partner B Integration Team

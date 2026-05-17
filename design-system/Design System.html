@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Project Agent — Design System v0.4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..600,30..100;1,9..144,300..600,30..100&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="system.css" />
+<style>
+  /* Page-specific scaffolding only. All visual primitives live in system.css. */
+  .ds-layout {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: var(--space-9);
+    max-width: var(--content-max-spec);
+    margin: 0 auto;
+    padding: var(--space-9) var(--space-9) var(--space-11);
+  }
+  @media (max-width: 1000px) {
+    .ds-layout { grid-template-columns: 1fr; gap: var(--space-7); padding: var(--space-7) var(--space-5) var(--space-9); }
+    .toc { position: static; }
+  }
+
+  /* Header */
+  .ds-masthead {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: var(--space-6);
+    padding-bottom: var(--space-6);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-8);
+  }
+  .ds-masthead .meta {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: var(--type-caption);
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+  .ds-masthead .meta .meta-row { display: block; }
+  .ds-masthead .meta .meta-row b { color: var(--text-primary); font-weight: var(--fw-body-strong); }
+
+  /* Section heading */
+  .ds-section { padding-top: var(--space-9); }
+  .ds-section:first-of-type { padding-top: var(--space-4); }
+  .ds-section .ds-section-head {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    gap: var(--space-5);
+    margin-bottom: var(--space-6);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border);
+  }
+  .ds-section .ds-section-head .num {
+    font-family: var(--font-mono);
+    font-size: var(--type-micro);
+    color: var(--text-faint);
+    letter-spacing: var(--ls-label);
+    text-transform: uppercase;
+  }
+  .ds-section .ds-section-head h2 {
+    font-family: var(--font-display);
+    font-size: 30px;
+    font-weight: var(--fw-display);
+    letter-spacing: -0.015em;
+    line-height: 1.1;
+    margin: 0;
+  }
+  .ds-section .ds-section-head h2 em { font-style: italic; color: var(--text-muted); font-weight: var(--fw-display-light); }
+
+  /* Swatch grid — color tokens */
+  .swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+  @media (max-width: 900px) { .swatch-grid { grid-template-columns: repeat(2, 1fr); } }
+  .swatch {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .swatch .chip {
+    height: 80px;
+    width: 100%;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .swatch .chip.is-deep      { background: var(--bg-deep); }
+  .swatch .chip.is-surface   { background: var(--bg-surface); }
+  .swatch .chip.is-elevated  { background: var(--bg-elevated); }
+  .swatch .chip.is-panel     { background: var(--bg-panel); }
+  .swatch .meta {
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    font-family: var(--font-mono);
+    font-size: var(--type-micro);
+    line-height: 1.5;
+  }
+  .swatch .meta .name { color: var(--text-primary); font-weight: var(--fw-body-strong); display: block; }
+  .swatch .meta .hex  { color: var(--text-muted); display: block; margin-top: 2px; }
+  .swatch .meta .use  { color: var(--text-faint); display: block; margin-top: var(--space-2); font-size: 10.5px; line-height: 1.5; letter-spacing: 0.01em; }
+
+  /* Accent rows */
+  .accent-row {
+    display: grid;
+    grid-template-columns: 120px repeat(4, 1fr);
+    gap: 2px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .accent-row + .accent-row { margin-top: var(--space-2); }
+  .accent-row .cell-name {
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-elevated);
+    font-family: var(--font-mono);
+    font-size: var(--type-caption);
+    color: var(--text-primary);
+    letter-spacing: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .accent-row .cell-name .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .accent-row .swatch-fill {
+    padding: var(--space-3) var(--space-4);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .accent-row .swatch-fill .label { color: var(--text-faint); font-size: 9.5px; letter-spacing: var(--ls-label); text-transform: uppercase; margin-bottom: 2px; }
+  .accent-row .swatch-fill .value { font-weight: var(--fw-body-strong); color: var(--text-primary); }
+
+  /* Type specimen */
+  .type-row {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: var(--space-6);
+    align-items: baseline;
+    padding: var(--space-5) 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .type-row .type-meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 1.6;
+  }
+  .type-row .type-meta .name { color: var(--text-primary); font-weight: var(--fw-body-strong); display: block; font-size: var(--type-caption); }
+  .type-row .type-meta .spec { color: var(--text-muted); display: block; margin-top: 2px; }
+  .type-row .type-meta .token { color: var(--text-faint); display: block; margin-top: var(--space-1); }
+
+  /* Spacing scale */
+  .spacing-scale {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .spacing-row {
+    display: grid;
+    grid-template-columns: 60px 80px 1fr 1fr;
+    gap: var(--space-3);
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: var(--type-caption);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .spacing-row .token { color: var(--text-primary); font-weight: var(--fw-body-strong); }
+  .spacing-row .val { color: var(--text-muted); }
+  .spacing-row .bar { height: 8px; background: var(--cyan); border-radius: 1px; }
+  .spacing-row .use { color: var(--text-secondary); font-size: 11px; }
+
+  /* Status semantics row */
+  .status-grid-demo {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: var(--space-3);
+  }
+  .status-tile {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    display: flex; flex-direction: column; gap: var(--space-3);
+  }
+  .status-tile .status-tile-cell.cell {
+    width: 28px;
+    height: 28px;
+    margin: var(--space-2) auto;
+  }
+  .status-tile .status-tile-cell.cell.is-empty {
+    width: 24px;
+    height: 24px;
+  }
+  .status-tile .status-tile-name { font-family: var(--font-mono); font-size: var(--type-caption); color: var(--text-primary); }
+  .status-tile .status-tile-desc { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); line-height: 1.5; }
+
+  /* Component sampler grid */
+  .sampler {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-5);
+  }
+  @media (max-width: 900px) { .sampler { grid-template-columns: 1fr; } }
+
+  .sampler-block {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
+  }
+  .sampler-block.span-2 { grid-column: 1 / -1; }
+  .sampler-block .sb-label {
+    font-family: var(--font-mono);
+    font-size: var(--type-micro);
+    letter-spacing: var(--ls-label);
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: var(--space-4);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sampler-block .sb-label .ref { color: var(--text-faint); font-size: 10px; }
+
+  /* Indicator-grid micro-preview */
+  .ind-row {
+    display: grid;
+    grid-template-columns: 160px repeat(6, 1fr);
+    gap: 4px;
+    align-items: center;
+  }
+  .ind-row + .ind-row { margin-top: 4px; }
+  .ind-row .cell { justify-self: center; }
+  .ind-row .project-label {
+    font-family: var(--font-mono);
+    font-size: var(--type-caption);
+    color: var(--text-primary);
+    padding: 0 var(--space-2);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .ind-row .project-label .sub { display: block; color: var(--text-faint); font-size: 10px; margin-top: 1px; }
+
+  /* Footer */
+  .colophon {
+    margin-top: var(--space-10);
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: var(--type-caption);
+    color: var(--text-muted);
+    display: flex; justify-content: space-between; align-items: flex-start;
+    flex-wrap: wrap; gap: var(--space-5);
+  }
+  .colophon .col { max-width: 360px; }
+  .colophon b { color: var(--text-primary); font-weight: var(--fw-body-strong); }
+
+  /* Brand-mark */
+  .brand-mark {
+    display: inline-flex; align-items: center; gap: var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--type-caption);
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+  }
+  .brand-mark .glyph {
+    width: 22px; height: 22px;
+    border: 1px solid var(--cyan);
+    border-radius: var(--radius-sm);
+    display: grid; place-items: center;
+    color: var(--cyan);
+    font-weight: var(--fw-body-bold);
+    font-size: 12px;
+  }
+</style>
+</head>
+<body class="ground">
+<div class="ds-layout">
+  <!-- ─────────────────────────────────────────  TOC  ────────────────────────────────────────── -->
+  <aside class="toc" aria-label="Section index">
+    <div class="toc-label">v0.4 · System</div>
+    <div class="stack-1">
+      <a href="#frame" class="is-active">Frame</a>
+      <a href="#color">Color</a>
+      <a href="#type">Type</a>
+      <a href="#spacing">Spacing</a>
+      <a href="#status">Status</a>
+      <a href="#components">Components</a>
+      <a href="#layouts">Layouts</a>
+      <a href="#voice">Voice · Notes</a>
+    </div>
+    <div class="toc-label" style="margin-top: var(--space-7);">Companions</div>
+    <div class="stack-1">
+      <a href="Portfolio Dashboard.html">Portfolio dashboard →</a>
+      <a href="#">Field manual</a>
+      <a href="#">Architecture</a>
+    </div>
+  </aside>
+
+  <main>
+    <!-- ─────────────────────────────────────────  MASTHEAD  ────────────────────────────────────────── -->
+    <header class="ds-masthead reveal">
+      <div class="stack-3">
+        <div class="brand-mark">
+          <span class="glyph">PA</span>
+          <span>Project Agent · Design System</span>
+        </div>
+        <h1 class="t-hero">A signal-first<br />system, <em>made plain.</em></h1>
+      </div>
+      <div class="meta">
+        <span class="meta-row"><b>v0.4</b> · 2026-05-15</span>
+        <span class="meta-row">tokens.css · system.css</span>
+        <span class="meta-row">dark · light proposed</span>
+      </div>
+    </header>
+
+    <!-- ─────────────────────────────────────────  FRAME / PHILOSOPHY  ────────────────────────────────────────── -->
+    <section class="ds-section" id="frame">
+      <div class="ds-section-head">
+        <span class="num">§01</span>
+        <h2>Frame <em>· the brief, in one breath</em></h2>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--space-7); align-items: start;">
+        <div class="stack-5">
+          <p class="t-lead">
+            This is the operating manual for everything Project Agent renders — the morning triage briefing, the portfolio dashboard, the PR description that lands at 8:02 a.m. The aesthetic was already promising. It was not yet a system. This document makes it a system.
+          </p>
+          <p class="t-body" style="color: var(--text-secondary);">
+            Two modes share one set of tokens. <strong style="color: var(--text-primary); font-weight: var(--fw-body-strong);">Editorial</strong> for spec artifacts read once — generous whitespace, type-driven hierarchy, dark editorial palette. <strong style="color: var(--text-primary); font-weight: var(--fw-body-strong);">Operational</strong> for reports scanned at speed — denser tables, faster rhythm, color paired with iconography because color alone is never enough. Drop-shadows are minimal. Depth comes from type and space, not chrome.
+          </p>
+          <p class="t-body" style="color: var(--text-muted);">
+            The point of the system is that the next contributor builds a new report by composing what's here — without inventing a new token, and without re-reading every prior decision.
+          </p>
+        </div>
+
+        <div class="pullquote">
+          <p class="t-pull">A token is a decision someone already made on your behalf. A system is a chain of those decisions you can defend in writing.</p>
+          <span class="pullquote-attr">The honest summary · §01</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────  COLOR  ────────────────────────────────────────── -->
+    <section class="ds-section" id="color">
+      <div class="ds-section-head">
+        <span class="num">§02</span>
+        <h2>Color <em>· surfaces, accents, semantics</em></h2>
+      </div>
+
+      <!-- Surfaces -->
+      <p class="t-eyebrow" style="margin-bottom: var(--space-4);">Surfaces · four-step ground</p>
+      <div class="swatch-grid">
+        <div class="swatch">
+          <div class="chip is-deep"></div>
+          <div class="meta">
+            <span class="name">bg-deep</span>
+            <span class="hex">#08090F</span>
+            <span class="use">Page ground. The default surface beneath everything.</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip is-surface"></div>
+          <div class="meta">
+            <span class="name">bg-surface</span>
+            <span class="hex">#0C0E16</span>
+            <span class="use">Primary content surface inside the page frame.</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip is-elevated"></div>
+          <div class="meta">
+            <span class="name">bg-elevated</span>
+            <span class="hex">#131622</span>
+            <span class="use">Cards, panels, fact tiles. The default panel fill.</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="chip is-panel"></div>
+          <div class="meta">
+            <span class="name">bg-panel</span>
+            <span class="hex">#1A1E2C</span>
+            <span class="use">Inset wells, code blocks, tabular row hover.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Text + borders -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); margin-top: var(--space-6);">
+        <div class="panel">
+          <p class="t-eyebrow" style="margin-bottom: var(--space-4);">Text · four-step contrast</p>
+          <div class="stack-3">
+            <div class="row-between"><span style="color: var(--text-primary);">text-primary</span><code class="code-inline">#E8E3D3</code></div>
+            <div class="row-between"><span style="color: var(--text-secondary);">text-secondary</span><code class="code-inline">0.78</code></div>
+            <div class="row-between"><span style="color: var(--text-muted);">text-muted</span><code class="code-inline">0.54</code></div>
+            <div class="row-between"><span style="color: var(--text-faint);">text-faint</span><code class="code-inline">0.32</code></div>
+          </div>
+        </div>
+        <div class="panel">
+          <p class="t-eyebrow" style="margin-bottom: var(--space-4);">Border · panel definition</p>
+          <div class="stack-3">
+            <div style="display: grid; grid-template-columns: 1fr 80px; gap: var(--space-4); align-items: center;">
+              <div>
+                <div class="t-caption" style="color: var(--text-primary);">border</div>
+                <div class="t-micro">0.08 · default 1px panels</div>
+              </div>
+              <div style="height: 32px; border: 1px solid var(--border); border-radius: var(--radius-sm);"></div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 80px; gap: var(--space-4); align-items: center;">
+              <div>
+                <div class="t-caption" style="color: var(--text-primary);">border-bright</div>
+                <div class="t-micro">0.14 · table headers, dividers</div>
+              </div>
+              <div style="height: 32px; border: 1px solid var(--border-bright); border-radius: var(--radius-sm);"></div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 80px; gap: var(--space-4); align-items: center;">
+              <div>
+                <div class="t-caption" style="color: var(--text-primary);">border-strong</div>
+                <div class="t-micro">0.24 · hover, emphasis</div>
+              </div>
+              <div style="height: 32px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Accents -->
+      <p class="t-eyebrow" style="margin: var(--space-7) 0 var(--space-4);">Accents · six colors, each four-stop</p>
+      <div class="stack-2">
+        <div class="accent-row">
+          <div class="cell-name"><span>cyan</span><span class="dot" style="background: var(--cyan);"></span></div>
+          <div class="swatch-fill" style="background: var(--cyan);"><span class="label" style="color: rgba(8,9,15,0.6);">base</span><span class="value" style="color: var(--bg-deep);">#5EEAD4</span></div>
+          <div class="swatch-fill" style="background: var(--cyan-soft);"><span class="label">soft</span><span class="value">10% α</span></div>
+          <div class="swatch-fill" style="background: transparent; border-left: 2px solid var(--cyan);"><span class="label">border</span><span class="value">32% α</span></div>
+          <div class="swatch-fill"><span class="label">use</span><span class="value" style="color: var(--text-secondary); font-weight: var(--fw-body);">primary · now · active</span></div>
+        </div>
+        <div class="accent-row">
+          <div class="cell-name"><span>amber</span><span class="dot" style="background: var(--amber);"></span></div>
+          <div class="swatch-fill" style="background: var(--amber);"><span class="label" style="color: rgba(8,9,15,0.6);">base</span><span class="value" style="color: var(--bg-deep);">#FBBF24</span></div>
+          <div class="swatch-fill" style="background: var(--amber-soft);"><span class="label">soft</span><span class="value">10% α</span></div>
+          <div class="swatch-fill" style="background: transparent; border-left: 2px solid var(--amber);"><span class="label">border</span><span class="value">32% α</span></div>
+          <div class="swatch-fill"><span class="label">use</span><span class="value" style="color: var(--text-secondary); font-weight: var(--fw-body);">warning · attention · derived</span></div>
+        </div>
+        <div class="accent-row">
+          <div class="cell-name"><span>coral</span><span class="dot" style="background: var(--coral);"></span></div>
+          <div class="swatch-fill" style="background: var(--coral);"><span class="label" style="color: rgba(8,9,15,0.6);">base</span><span class="value" style="color: var(--bg-deep);">#F87171</span></div>
+          <div class="swatch-fill" style="background: var(--coral-soft);"><span class="label">soft</span><span class="value">10% α</span></div>
+          <div class="swatch-fill" style="background: transparent; border-left: 2px solid var(--coral);"><span class="label">border</span><span class="value">32% α</span></div>
+          <div class="swatch-fill"><span class="label">use</span><span class="value" style="color: var(--text-secondary); font-weight: var(--fw-body);">danger · blockers · retraction</span></div>
+        </div>
+        <div class="accent-row">
+          <div class="cell-name"><span>sage</span><span class="dot" style="background: var(--sage);"></span></div>
+          <div class="swatch-fill" style="background: var(--sage);"><span class="label" style="color: rgba(8,9,15,0.6);">base</span><span class="value" style="color: var(--bg-deep);">#86EFAC</span></div>
+          <div class="swatch-fill" style="background: var(--sage-soft);"><span class="label">soft</span><span class="value">10% α</span></div>
+          <div class="swatch-fill" style="background: transparent; border-left: 2px solid var(--sage);"><span class="label">border</span><span class="value">32% α</span></div>
+          <div class="swatch-fill"><span class="label">use</span><span class="value" style="color: var(--text-secondary); font-weight: var(--fw-body);">success · healthy · closed</span></div>
+        </div>
+        <div class="accent-row">
+          <div class="cell-name"><span>sky</span><span class="dot" style="background: var(--sky);"></span></div>
+          <div class="swatch-fill" style="background: var(--sky);"><span class="label" style="color: rgba(8,9,15,0.6);">base</span><span class="value" style="color: var(--bg-deep);">#7DD3FC</span></div>
+          <div class="swatch-fill" style="background: var(--sky-soft);"><span class="label">soft</span><span class="value">10% α</span></div>
+          <div class="swatch-fill" style="background: transparent; border-left: 2px solid var(--sky);"><span class="label">border</span><span class="value">32% α</span></div>
+          <div class="swatch-fill"><span class="label">use</span><span class="value" style="color: var(--text-secondary); font-weight: var(--fw-body);">data · informational · low severity</span></div>
+        </div>
+        <div class="accent-row">
+          <div class="cell-name"><span>violet</span><span class="dot" style="background: var(--violet);"></span></div>
+          <div class="swatch-fill" style="background: var(--violet);"><span class="label" style="color: rgba(8,9,15,0.6);">base</span><span class="value" style="color: var(--bg-deep);">#C4B5FD</span></div>
+          <div class="swatch-fill" style="background: var(--violet-soft);"><span class="label">soft</span><span class="value">10% α</span></div>
+          <div class="swatch-fill" style="background: transparent; border-left: 2px solid var(--violet);"><span class="label">border</span><span class="value">32% α</span></div>
+          <div class="swatch-fill"><span class="label">use</span><span class="value" style="color: var(--text-secondary); font-weight: var(--fw-body);">synthesis · verdict · phase</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────  STATUS SEMANTICS  ────────────────────────────────────────── -->
+    <section class="ds-section" id="status">
+      <div class="ds-section-head">
+        <span class="num">§03</span>
+        <h2>Status <em>· what the pipeline emits</em></h2>
+      </div>
+      <p class="t-body" style="color: var(--text-secondary); max-width: 64ch; margin-bottom: var(--space-6);">
+        The pipeline writes five things into every indicator: a color (<code class="code-inline">green</code>/<code class="code-inline">yellow</code>/<code class="code-inline">red</code>), a <em>lock</em> bit, a <em>source</em> bit (manual or derived), the timestamp, and the rationale. Color does not carry meaning alone — every state pairs with a glyph and, where applicable, a pattern. Color-blind safe; print safe.
+      </p>
+
+      <div class="status-grid-demo">
+        <div class="status-tile">
+          <div class="status-tile-cell cell is-green src-derived" aria-label="Green, derived">
+            <svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="cell-source" title="Derived"></span>
+          </div>
+          <div>
+            <div class="status-tile-name">status-green · derived</div>
+            <div class="status-tile-desc">Healthy. Pipeline-inferred — chip faded to 45%.</div>
+          </div>
+        </div>
+        <div class="status-tile">
+          <div class="status-tile-cell cell is-yellow src-derived" aria-label="Yellow, derived">
+            <svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M8 3v6.5M8 12.5v0.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span class="cell-source"></span>
+          </div>
+          <div>
+            <div class="status-tile-name">status-yellow · derived</div>
+            <div class="status-tile-desc">Drift detected. Pipeline-derived — faded chip.</div>
+          </div>
+        </div>
+        <div class="status-tile">
+          <div class="status-tile-cell cell is-red src-derived" aria-label="Red, derived">
+            <svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span class="cell-source"></span>
+          </div>
+          <div>
+            <div class="status-tile-name">status-red · derived</div>
+            <div class="status-tile-desc">Off-track. Pipeline-derived — faded chip.</div>
+          </div>
+        </div>
+        <div class="status-tile">
+          <div class="status-tile-cell cell is-green src-manual is-locked" aria-label="Green, manual, locked">
+            <svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="cell-source"></span>
+          </div>
+          <div>
+            <div class="status-tile-name">status-green · manual · locked</div>
+            <div class="status-tile-desc">PM-set, immutable. Full-opacity chip + dashed halo.</div>
+          </div>
+        </div>
+        <div class="status-tile">
+          <div class="status-tile-cell cell is-yellow src-manual is-locked" aria-label="Yellow, manual, locked">
+            <svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M8 3v6.5M8 12.5v0.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span class="cell-source"></span>
+          </div>
+          <div>
+            <div class="status-tile-name">status-yellow · manual · locked</div>
+            <div class="status-tile-desc">PM disagrees with derivation. Full opacity + halo.</div>
+          </div>
+        </div>
+        <div class="status-tile">
+          <div class="status-tile-cell cell is-empty" aria-label="No data">
+            <svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="1.4" fill="currentColor"/></svg>
+          </div>
+          <div>
+            <div class="status-tile-name">status · empty</div>
+            <div class="status-tile-desc">No data this cycle. Dashed outline — not green.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────  TYPE  ────────────────────────────────────────── -->
+    <section class="ds-section" id="type">
+      <div class="ds-section-head">
+        <span class="num">§04</span>
+        <h2>Type <em>· two families, used decisively</em></h2>
+      </div>
+      <p class="t-body" style="color: var(--text-secondary); max-width: 64ch; margin-bottom: var(--space-6);">
+        Fraunces variable for display and italic emphasis — a first-class signal, not a decoration. JetBrains Mono for everything else, with tabular figures on for any numeric context. Two families. No third unless one earns its way in.
+      </p>
+
+      <div class="type-row">
+        <div class="type-meta">
+          <span class="name">Hero</span>
+          <span class="spec">Fraunces · 88/1.06 · 300</span>
+          <span class="token">--type-hero</span>
+        </div>
+        <h1 class="t-hero">Quietly <em>confident.</em></h1>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <span class="name">Page title</span>
+          <span class="spec">Fraunces · 56/1.18 · 400</span>
+          <span class="token">--type-page-title</span>
+        </div>
+        <h2 class="t-page-title">Daily triage briefing — Tuesday</h2>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <span class="name">Section title</span>
+          <span class="spec">Fraunces · 34/1.18 · 400</span>
+          <span class="token">--type-section-title</span>
+        </div>
+        <h3 class="t-section-title">Top three, by attention</h3>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <span class="name">Subsection</span>
+          <span class="spec">Fraunces · 22/1.18 · 400</span>
+          <span class="token">--type-subsection</span>
+        </div>
+        <h4 class="t-subsection">Acme · Demo Platform</h4>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <span class="name">Lead</span>
+          <span class="spec">JetBrains Mono · 17/1.62 · 400</span>
+          <span class="token">--type-lead</span>
+        </div>
+        <p class="t-lead">Three projects need a closer look this morning — one risk pattern that surfaced overnight, two action chains that are aging past their thresholds.</p>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <span class="name">Body</span>
+          <span class="spec">JetBrains Mono · 14.5/1.62 · 400</span>
+          <span class="token">--type-body</span>
+        </div>
+        <p class="t-body" style="color: var(--text-secondary);">The action <code class="code-inline">act_4f2c</code> on Acme · Demo Platform has been open 11 days past due, with no status change in 7. <code class="code-inline">stakeholder_inactivity</code> on Lila (sponsor) reached threshold yesterday.</p>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <span class="name">Caption</span>
+          <span class="spec">JetBrains Mono · 12.5/1.4 · 400</span>
+          <span class="token">--type-caption</span>
+        </div>
+        <p class="t-caption">Last updated 2026-05-15T08:02:14-03:00 · run_id <code class="code-inline" style="font-size: 11px;">2026-05-15--7a3f</code></p>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <span class="name">Eyebrow</span>
+          <span class="spec">JetBrains Mono · 11/1.4 · 500 · 0.10em</span>
+          <span class="token">--type-micro</span>
+        </div>
+        <p class="t-eyebrow">Frame · Common Ground · By Dimension</p>
+      </div>
+      <div class="type-row">
+        <div class="type-meta">
+          <span class="name">Pull quote</span>
+          <span class="spec">Fraunces italic · clamp(22–28)/1.35 · 300</span>
+          <span class="token">.t-pull · in .pullquote</span>
+        </div>
+        <p class="t-pull">A signal is a fact about the project record that the project record cannot yet defend on its own.</p>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────  SPACING  ────────────────────────────────────────── -->
+    <section class="ds-section" id="spacing">
+      <div class="ds-section-head">
+        <span class="num">§05</span>
+        <h2>Spacing <em>· a modular rhythm, three registers</em></h2>
+      </div>
+      <p class="t-body" style="color: var(--text-secondary); max-width: 64ch; margin-bottom: var(--space-6);">
+        Eleven steps. Intra-component for the first three, between-component for the middle range, between-section for the long jumps. Use the named token, never the literal.
+      </p>
+
+      <div class="spacing-scale">
+        <div class="spacing-row"><span class="token">--space-1</span><span class="val">4 px</span><span class="bar" style="width: 4px;"></span><span class="use">intra · icon-to-text</span></div>
+        <div class="spacing-row"><span class="token">--space-2</span><span class="val">8 px</span><span class="bar" style="width: 8px;"></span><span class="use">intra · label-to-value</span></div>
+        <div class="spacing-row"><span class="token">--space-3</span><span class="val">12 px</span><span class="bar" style="width: 12px;"></span><span class="use">intra · row-gap inside card</span></div>
+        <div class="spacing-row"><span class="token">--space-4</span><span class="val">16 px</span><span class="bar" style="width: 16px;"></span><span class="use">component · pill-to-pill</span></div>
+        <div class="spacing-row"><span class="token">--space-5</span><span class="val">20 px</span><span class="bar" style="width: 20px;"></span><span class="use">component · card padding</span></div>
+        <div class="spacing-row"><span class="token">--space-6</span><span class="val">24 px</span><span class="bar" style="width: 24px;"></span><span class="use">component · panel padding</span></div>
+        <div class="spacing-row"><span class="token">--space-7</span><span class="val">32 px</span><span class="bar" style="width: 32px;"></span><span class="use">component · between cards</span></div>
+        <div class="spacing-row"><span class="token">--space-8</span><span class="val">40 px</span><span class="bar" style="width: 40px;"></span><span class="use">section · within page</span></div>
+        <div class="spacing-row"><span class="token">--space-9</span><span class="val">56 px</span><span class="bar" style="width: 56px;"></span><span class="use">section · between sections</span></div>
+        <div class="spacing-row"><span class="token">--space-10</span><span class="val">72 px</span><span class="bar" style="width: 72px;"></span><span class="use">section · page-top margin</span></div>
+        <div class="spacing-row"><span class="token">--space-11</span><span class="val">96 px</span><span class="bar" style="width: 96px;"></span><span class="use">section · hero offset</span></div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-4); margin-top: var(--space-7);">
+        <div class="panel panel--pad-sm">
+          <div class="t-eyebrow" style="margin-bottom: var(--space-3);">Radius</div>
+          <div class="row" style="gap: var(--space-3);">
+            <div style="width: 36px; height: 36px; background: var(--bg-panel); border: 1px solid var(--border-bright); border-radius: 2px;"></div>
+            <div style="width: 36px; height: 36px; background: var(--bg-panel); border: 1px solid var(--border-bright); border-radius: 4px;"></div>
+            <div style="width: 36px; height: 36px; background: var(--bg-panel); border: 1px solid var(--border-bright); border-radius: 8px;"></div>
+          </div>
+          <div class="t-micro" style="margin-top: var(--space-3);">sm 2 · md 4 · lg 8</div>
+        </div>
+        <div class="panel panel--pad-sm">
+          <div class="t-eyebrow" style="margin-bottom: var(--space-3);">Shadow</div>
+          <div style="height: 36px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; box-shadow: var(--shadow-pop);"></div>
+          <div class="t-micro" style="margin-top: var(--space-3);">--shadow-pop · cards lifting from ground</div>
+        </div>
+        <div class="panel panel--pad-sm">
+          <div class="t-eyebrow" style="margin-bottom: var(--space-3);">Motion</div>
+          <div class="t-caption" style="line-height: 1.7;">
+            <span style="color: var(--text-primary);">600ms</span> ease-out · section reveal<br />
+            <span style="color: var(--text-primary);">220ms</span> ease-std · hover<br />
+            <span style="color: var(--text-primary);">120ms</span> ease-std · micro
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────  COMPONENT SAMPLER  ────────────────────────────────────────── -->
+    <section class="ds-section" id="components">
+      <div class="ds-section-head">
+        <span class="num">§06</span>
+        <h2>Components <em>· primary states, key variants</em></h2>
+      </div>
+
+      <div class="sampler">
+        <!-- Status pills -->
+        <div class="sampler-block">
+          <div class="sb-label"><span>Status pill · with locked variant</span><span class="ref">.pill.status-*</span></div>
+          <div class="row">
+            <span class="pill status-green">
+              <svg class="pill-glyph" viewBox="0 0 12 12" fill="none"><path d="M2 6.5l2.5 2.5L10 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Green · derived
+            </span>
+            <span class="pill status-yellow">
+              <svg class="pill-glyph" viewBox="0 0 12 12" fill="none"><path d="M6 2v5M6 9.5v0.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              Yellow · manual
+            </span>
+            <span class="pill status-red">
+              <svg class="pill-glyph" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              Red · derived
+              <svg class="pill-locked" viewBox="0 0 12 12" fill="none" style="margin-left: 2px;">
+                <rect x="3" y="5.5" width="6" height="4.5" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
+                <path d="M4.5 5.5V4a1.5 1.5 0 1 1 3 0v1.5" stroke="currentColor" stroke-width="1.2"/>
+              </svg>
+            </span>
+          </div>
+          <div class="row" style="margin-top: var(--space-3);">
+            <span class="pill is-phase">Phase 0.5</span>
+            <span class="pill is-method">deterministic</span>
+            <span class="pill is-doctype">.eml</span>
+            <span class="pill is-doctype">backlog.csv</span>
+          </div>
+        </div>
+
+        <!-- Severity -->
+        <div class="sampler-block">
+          <div class="sb-label"><span>Severity badge · shape + color</span><span class="ref">.badge-sev.sev-*</span></div>
+          <div class="row">
+            <span class="badge-sev sev-high"><span class="sev-mark"></span>High</span>
+            <span class="badge-sev sev-medium"><span class="sev-mark"></span>Medium</span>
+            <span class="badge-sev sev-low"><span class="sev-mark"></span>Low</span>
+          </div>
+          <p class="t-caption" style="margin-top: var(--space-4);">Triangle · circle · square. Color is the secondary carrier. Print-legible.</p>
+        </div>
+
+        <!-- Callouts -->
+        <div class="sampler-block span-2">
+          <div class="sb-label"><span>Callouts · four flavors</span><span class="ref">.callout.is-*</span></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+            <div class="callout is-info">
+              <div class="callout-icon">ⓘ</div>
+              <div>
+                <div class="callout-label">The honest summary</div>
+                <p class="callout-body">Three projects need a closer look this morning. One of them — Acme · Demo Platform — likely warrants intervention before standup.</p>
+              </div>
+            </div>
+            <div class="callout is-warning">
+              <div class="callout-icon">!</div>
+              <div>
+                <div class="callout-label">Open question 03</div>
+                <p class="callout-body">Lila's last inbound was 9 business days ago, with two unanswered scheduling requests. Treat as <em>stakeholder drift</em> until contact restored.</p>
+              </div>
+            </div>
+            <div class="callout is-danger">
+              <div class="callout-icon">×</div>
+              <div>
+                <div class="callout-label">Blocker</div>
+                <p class="callout-body">Architecture sign-off depends on Riku, who is OOO until 2026-05-22. Two downstream actions stalled. No mitigation proposed.</p>
+              </div>
+            </div>
+            <div class="callout is-verdict">
+              <div class="callout-icon">∴</div>
+              <div>
+                <div class="callout-label">Closing read</div>
+                <p class="callout-body">The pipeline saw what we'd have seen at standup — three days earlier. The signal layer is doing its job. The PM's job is to act on it.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pull quote -->
+        <div class="sampler-block span-2">
+          <div class="sb-label"><span>Pull quote · the editorial register</span><span class="ref">.pullquote</span></div>
+          <div class="pullquote">
+            <p class="t-pull">The cost of a wrong inference is a PR you decline. The cost of a missed inference is a Tuesday meeting where someone tells you something you should have known on Friday.</p>
+            <span class="pullquote-attr">PRD · §0 Origin & Vision</span>
+          </div>
+        </div>
+
+        <!-- Fact cards -->
+        <div class="sampler-block span-2">
+          <div class="sb-label"><span>Fact card · 4-up grid</span><span class="ref">.fact-card</span></div>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3);">
+            <div class="fact-card">
+              <span class="fact-label">Projects red</span>
+              <span class="fact-value">3<span class="fact-unit">of 12</span></span>
+              <span class="fact-detail"><span style="color: var(--trend-up);">↑ 1</span> vs yesterday</span>
+            </div>
+            <div class="fact-card">
+              <span class="fact-label">Signals — open</span>
+              <span class="fact-value">17</span>
+              <span class="fact-detail"><span style="color: var(--trend-flat);">→ 0</span> · 4 high, 9 med, 4 low</span>
+            </div>
+            <div class="fact-card">
+              <span class="fact-label">Actions aging</span>
+              <span class="fact-value">9</span>
+              <span class="fact-detail"><span style="color: var(--trend-down);">↓ 2</span> closed since Mon</span>
+            </div>
+            <div class="fact-card">
+              <span class="fact-label">Silent &gt; 7d</span>
+              <span class="fact-value">2</span>
+              <span class="fact-detail">Pebble · Banyan</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Signal card -->
+        <div class="sampler-block">
+          <div class="sb-label"><span>Signal card</span><span class="ref">.signal-card</span></div>
+          <div class="signal-card">
+            <div class="signal-head">
+              <span class="badge-sev sev-high"><span class="sev-mark"></span>High</span>
+              <span class="signal-category">risk · escalation</span>
+            </div>
+            <h4 class="signal-title">Tone shift in last three inbound emails from Acme sponsor</h4>
+            <p class="signal-rationale">Sentiment drift across <code class="code-inline">src_a1c</code>, <code class="code-inline">src_b04</code>, <code class="code-inline">src_b22</code> — three escalation-language markers detected. Sponsor's first explicit reference to "timeline concerns" in 47 days.</p>
+            <div class="signal-foot">
+              <span class="signal-evidence">3 events · llm · prompt v4 · conf 0.86</span>
+              <button class="signal-action">View evidence →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Indicator cells -->
+        <div class="sampler-block span-2">
+          <div class="sb-label"><span>Indicator atoms · 7 documented shapes</span><span class="ref">.cell.* · variants v1–v7</span></div>
+          <p class="t-caption" style="margin-bottom: var(--space-4); color: var(--text-secondary); max-width: 72ch;">
+            The atomic unit of the portfolio dashboard. Every shape carries the same five-state language — <b style="color: var(--text-primary); font-weight: var(--fw-body-strong);">color</b> (green / yellow / red / empty), <b style="color: var(--text-primary); font-weight: var(--fw-body-strong);">source</b> (manual = filled, derived = ring or fade), and <b style="color: var(--text-primary); font-weight: var(--fw-body-strong);">locked</b> (dashed halo or hatch). Picked variant is rolled into <code class="code-inline">.cell</code> in <code class="code-inline">system.css</code>. See <a href="Indicator Grid Options.html">Indicator Grid Options →</a> for full-row comparisons.
+          </p>
+
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--space-3); align-items: end; margin-bottom: var(--space-4);">
+
+            <!-- v1: heatmap tile -->
+            <div style="display: flex; flex-direction: column; gap: var(--space-3); align-items: center; padding: var(--space-4) var(--space-2); background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md);">
+              <div style="display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 0 8px;">
+                <div style="height: 12px; background: var(--coral); opacity: 0.78; border-radius: 2px;"></div>
+                <div style="height: 12px; background: var(--amber); opacity: 0.75; border-radius: 2px;"></div>
+                <div style="height: 12px; background: var(--sage); opacity: 0.75; border-radius: 2px;"></div>
+              </div>
+              <div style="text-align: center;">
+                <div class="t-eyebrow" style="color: var(--text-primary);">v1 · tile</div>
+                <div class="t-micro" style="margin-top: 2px;">heatmap, no chrome</div>
+              </div>
+            </div>
+
+            <!-- v2: bordered rect + glyph -->
+            <div style="display: flex; flex-direction: column; gap: var(--space-3); align-items: center; padding: var(--space-4) var(--space-2); background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md);">
+              <div style="display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 0 10px; align-items: center;">
+                <div style="width: 32px; height: 18px; background: var(--coral-soft); border: 1px solid var(--coral-border); border-radius: 2px; color: var(--coral); display: grid; place-items: center;">
+                  <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                </div>
+                <div style="width: 32px; height: 18px; background: var(--amber-soft); border: 1px solid var(--amber-border); border-radius: 2px; color: var(--amber); display: grid; place-items: center;">
+                  <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M6 2v5M6 9v.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                </div>
+                <div style="width: 32px; height: 18px; background: var(--sage-soft); border: 1px solid var(--sage-border); border-radius: 2px; color: var(--sage); display: grid; place-items: center;">
+                  <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M2 6.5l2.5 2.5L10 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+              </div>
+              <div style="text-align: center;">
+                <div class="t-eyebrow" style="color: var(--text-primary);">v2 · glyph</div>
+                <div class="t-micro" style="margin-top: 2px;">bordered + icon</div>
+              </div>
+            </div>
+
+            <!-- v3: bordered tile, no glyph -->
+            <div style="display: flex; flex-direction: column; gap: var(--space-3); align-items: center; padding: var(--space-4) var(--space-2); background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md);">
+              <div style="display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 0 8px;">
+                <div style="height: 16px; background: var(--coral-soft); border: 1px solid var(--coral-border); border-radius: 2px;"></div>
+                <div style="height: 16px; background: var(--amber-soft); border: 1px solid var(--amber-border); border-radius: 2px;"></div>
+                <div style="height: 16px; background: var(--sage-soft); border: 1px solid var(--sage-border); border-radius: 2px;"></div>
+              </div>
+              <div style="text-align: center;">
+                <div class="t-eyebrow" style="color: var(--text-primary);">v3 · tile-bordered</div>
+                <div class="t-micro" style="margin-top: 2px;">soft fill, no icon</div>
+              </div>
+            </div>
+
+            <!-- v4: small dot -->
+            <div style="display: flex; flex-direction: column; gap: var(--space-3); align-items: center; padding: var(--space-4) var(--space-2); background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md);">
+              <div style="display: flex; flex-direction: column; gap: 6px; align-items: center;">
+                <div style="width: 12px; height: 12px; background: var(--coral); border-radius: 50%;"></div>
+                <div style="width: 12px; height: 12px; background: var(--bg-elevated); box-shadow: inset 0 0 0 2px var(--amber); border-radius: 50%;"></div>
+                <div style="width: 12px; height: 12px; background: var(--bg-elevated); box-shadow: inset 0 0 0 2px var(--sage); border-radius: 50%;"></div>
+              </div>
+              <div style="text-align: center;">
+                <div class="t-eyebrow" style="color: var(--text-primary);">v4 · dot 12</div>
+                <div class="t-micro" style="margin-top: 2px;">filled / ring</div>
+              </div>
+            </div>
+
+            <!-- v5: larger dot -->
+            <div style="display: flex; flex-direction: column; gap: var(--space-3); align-items: center; padding: var(--space-4) var(--space-2); background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md);">
+              <div style="display: flex; flex-direction: column; gap: 5px; align-items: center;">
+                <div style="width: 16px; height: 16px; background: var(--coral); border-radius: 50%;"></div>
+                <div style="width: 16px; height: 16px; background: var(--bg-elevated); box-shadow: inset 0 0 0 2.5px var(--amber); border-radius: 50%;"></div>
+                <div style="width: 16px; height: 16px; background: var(--bg-elevated); box-shadow: inset 0 0 0 2.5px var(--sage); border-radius: 50%;"></div>
+              </div>
+              <div style="text-align: center;">
+                <div class="t-eyebrow" style="color: var(--text-primary);">v5 · dot 16</div>
+                <div class="t-micro" style="margin-top: 2px;">same logic, more presence</div>
+              </div>
+            </div>
+
+            <!-- v6: square chip -->
+            <div style="display: flex; flex-direction: column; gap: var(--space-3); align-items: center; padding: var(--space-4) var(--space-2); background: var(--bg-panel); border: 1px solid var(--cyan-border); border-radius: var(--radius-md);">
+              <div style="display: flex; flex-direction: column; gap: 6px; align-items: center;">
+                <div style="width: 12px; height: 12px; background: var(--coral); border-radius: 2px;"></div>
+                <div style="width: 12px; height: 12px; background: var(--amber); border-radius: 2px; opacity: 0.45;"></div>
+                <div style="width: 12px; height: 12px; background: var(--sage); border-radius: 2px; opacity: 0.45;"></div>
+              </div>
+              <div style="text-align: center;">
+                <div class="t-eyebrow" style="color: var(--cyan);">v6 · chip · current</div>
+                <div class="t-micro" style="margin-top: 2px;">square, fade-on-derived</div>
+              </div>
+            </div>
+
+            <!-- v7: capsule pill -->
+            <div style="display: flex; flex-direction: column; gap: var(--space-3); align-items: center; padding: var(--space-4) var(--space-2); background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md);">
+              <div style="display: flex; flex-direction: column; gap: 6px; align-items: center;">
+                <div style="width: 22px; height: 8px; background: var(--coral); border-radius: 999px;"></div>
+                <div style="width: 22px; height: 8px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--amber); border-radius: 999px;"></div>
+                <div style="width: 22px; height: 8px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--sage); border-radius: 999px;"></div>
+              </div>
+              <div style="text-align: center;">
+                <div class="t-eyebrow" style="color: var(--text-primary);">v7 · pill</div>
+                <div class="t-micro" style="margin-top: 2px;">capsule, time-feel</div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="t-caption" style="display: flex; gap: var(--space-5); flex-wrap: wrap; padding-top: var(--space-3); border-top: 1px dashed var(--border-bright);">
+            <span>top row = <b style="color: var(--text-primary); font-weight: var(--fw-body-strong);">manual / red</b></span>
+            <span>middle = derived / yellow</span>
+            <span>bottom = derived / green</span>
+            <span style="color: var(--text-faint);">·</span>
+            <span style="color: var(--cyan);">v6 chip is the canonical <code class="code-inline">.cell</code></span>
+          </div>
+        </div>
+
+        <!-- Comparison table -->
+        <div class="sampler-block span-2">
+          <div class="sb-label"><span>Comparison table · two-color identity</span><span class="ref">.table-compare</span></div>
+          <table class="table-compare">
+            <thead>
+              <tr>
+                <th></th>
+                <th class="col-a"><span class="pill is-method">Deterministic</span></th>
+                <th class="col-b"><span class="pill" style="color: var(--violet); background: var(--violet-soft); border-color: var(--violet-border);">LLM-evaluated</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="dimension">Where it shines</td>
+                <td>Thresholds you can articulate. Aging actions, unowned blockers, drift on a target date.</td>
+                <td>Patterns you can't pre-declare. Tone shift, emergent risk, language of escalation.</td>
+              </tr>
+              <tr>
+                <td class="dimension">What it costs</td>
+                <td>SQL author-time. One detector per signal. Tightly bounded.</td>
+                <td>Per-run API cost. Prompt-version churn. Cache hit makes it free on re-run.</td>
+              </tr>
+              <tr>
+                <td class="dimension">Audit surface</td>
+                <td>Triggering <code class="code-inline">event_id</code>s returned by the query itself.</td>
+                <td>Prompt cites <code class="code-inline">event_id</code>s; output must echo them in <code class="code-inline">evidence</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────  LAYOUTS PREVIEW  ────────────────────────────────────────── -->
+    <section class="ds-section" id="layouts">
+      <div class="ds-section-head">
+        <span class="num">§07</span>
+        <h2>Layouts <em>· the indicator grid, previewed</em></h2>
+      </div>
+      <p class="t-body" style="color: var(--text-secondary); max-width: 64ch; margin-bottom: var(--space-6);">
+        The portfolio dashboard is the highest-value layout in the whole system. Below: a compact preview at sampler scale; the full eight-row, six-indicator version lives in its own file — <a href="Portfolio Dashboard.html">open it →</a>.
+      </p>
+
+      <div class="panel" style="padding: var(--space-5);">
+        <div class="ind-row" style="margin-bottom: var(--space-3);">
+          <div class="project-label" style="color: var(--text-faint); font-size: 10px; letter-spacing: var(--ls-label); text-transform: uppercase;">Project</div>
+          <div class="t-eyebrow" style="text-align: center;">Risk</div>
+          <div class="t-eyebrow" style="text-align: center;">Deliv.</div>
+          <div class="t-eyebrow" style="text-align: center;">Action</div>
+          <div class="t-eyebrow" style="text-align: center;">Blocker</div>
+          <div class="t-eyebrow" style="text-align: center;">Backlog</div>
+          <div class="t-eyebrow" style="text-align: center;">Comms</div>
+        </div>
+
+        <div class="ind-row">
+          <div class="project-label">Acme · Demo Platform <span class="sub">Phase: execution</span></div>
+          <div class="cell is-red src-manual is-locked"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-yellow src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M8 3v6.5M8 12.5v0.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-red src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-yellow src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M8 3v6.5M8 12.5v0.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-green src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-red src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="cell-source"></span></div>
+        </div>
+        <div class="ind-row">
+          <div class="project-label">Pebble · Onboarding <span class="sub">Phase: discovery</span></div>
+          <div class="cell is-green src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-green src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-yellow src-manual is-locked"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M8 3v6.5M8 12.5v0.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-green src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-empty"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="1.4" fill="currentColor"/></svg></div>
+          <div class="cell is-yellow src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M8 3v6.5M8 12.5v0.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="cell-source"></span></div>
+        </div>
+        <div class="ind-row">
+          <div class="project-label">Banyan · Migration <span class="sub">Phase: closing</span></div>
+          <div class="cell is-green src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-yellow src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M8 3v6.5M8 12.5v0.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-green src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-green src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-green src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="cell-source"></span></div>
+          <div class="cell is-yellow src-derived"><svg class="cell-glyph" viewBox="0 0 16 16" fill="none"><path d="M8 3v6.5M8 12.5v0.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="cell-source"></span></div>
+        </div>
+
+        <p class="t-caption" style="margin-top: var(--space-5); display: flex; gap: var(--space-5); flex-wrap: wrap;">
+          <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--sage); border-radius: 2px; vertical-align: middle; margin-right: 6px;"></span>healthy</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--amber); border-radius: 2px; vertical-align: middle; margin-right: 6px;"></span>drift</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--coral); border-radius: 2px; vertical-align: middle; margin-right: 6px;"></span>off-track</span>
+          <span style="color: var(--text-faint);">·</span>
+          <span>dashed halo = locked (PM override)</span>
+          <span>·</span>
+          <span>full opacity = manual · faded = derived</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────  VOICE / NOTES  ────────────────────────────────────────── -->
+    <section class="ds-section" id="voice">
+      <div class="ds-section-head">
+        <span class="num">§08</span>
+        <h2>Voice <em>· notes & next steps</em></h2>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--space-7); align-items: start;">
+        <div class="stack-5">
+          <div>
+            <p class="t-eyebrow" style="margin-bottom: var(--space-2);">Brand voice</p>
+            <p class="t-body" style="color: var(--text-secondary);">Quietly confident. Slightly dry. Never cute. Write microcopy your design system can live up to. Section TOC labels stay short and grounded — <em style="color: var(--text-primary); font-style: italic;">Frame · Common Ground · By Dimension</em>. Status labels are factual — <em style="color: var(--text-primary); font-style: italic;">Current · Next · Planned · OSS</em>. Callouts borrow their name from what they're for — <em style="color: var(--text-primary); font-style: italic;">The honest summary · Closing read · Open question 03</em>.</p>
+          </div>
+          <div>
+            <p class="t-eyebrow" style="margin-bottom: var(--space-2);">Bilingual</p>
+            <p class="t-body" style="color: var(--text-secondary);">English + Portuguese-BR are first-class. Section labels, button text, badges localize. Dates stay ISO <code class="code-inline">YYYY-MM-DD</code> for machine readability; the surrounding label translates — <em>Last updated · Última atualização</em>. The triage briefing has been running in pt-BR successfully — every primitive in §06 reads cleanly in either.</p>
+          </div>
+          <div>
+            <p class="t-eyebrow" style="margin-bottom: var(--space-2);">Accessibility</p>
+            <p class="t-body" style="color: var(--text-secondary);">Color is never the sole carrier of meaning. Status colors pair with glyphs (check / exclamation / cross). Severity badges pair color with shape (triangle / circle / square). Locked cells pair color with diagonal hatch. Tables get proper <code class="code-inline">&lt;th scope&gt;</code>. Hover-popovers have keyboard-focus equivalents. Text contrast meets AA on dark; AAA on light.</p>
+          </div>
+        </div>
+
+        <div class="callout is-verdict">
+          <div class="callout-icon">∴</div>
+          <div>
+            <div class="callout-label">Closing read</div>
+            <p class="callout-body">This is the first canvas. Follow-ups in sequence: triage briefing (HTML + MD, pt-BR labels), light-mode operational variant, project status report with sparklines, PR description in GFM-only, client email draft, Mermaid theme spec, Markdown-degradation reference, and the engineering handoff sheet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="colophon">
+      <div class="col">
+        <b>Project Agent · Design System v0.4</b><br />
+        Companion to PRD v0.4 · ARCHITECTURE v0.2 · CLAUDE v0.4.<br />
+        tokens.css · system.css · loaded inline-able for offline reports.
+      </div>
+      <div class="col" style="text-align: right;">
+        Generated 2026-05-15T08:02:14-03:00<br />
+        run_id <code class="code-inline">design-system--7a3f</code><br />
+        <a href="Portfolio Dashboard.html">→ Portfolio dashboard</a>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<script>
+  // TOC active-section indicator
+  (function () {
+    const links = document.querySelectorAll('.toc a[href^="#"]:not([href="#"])');
+    const sections = Array.from(links)
+      .map(a => { try { return document.querySelector(a.getAttribute('href')); } catch (e) { return null; } })
+      .filter(Boolean);
+    if (!sections.length) return;
+    function onScroll () {
+      const y = window.scrollY + 120;
+      let active = sections[0];
+      for (const s of sections) { if (s.offsetTop <= y) active = s; }
+      links.forEach(a => a.classList.toggle('is-active', a.getAttribute('href') === '#' + active.id));
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  })();
+</script>
+</body>
+</html>

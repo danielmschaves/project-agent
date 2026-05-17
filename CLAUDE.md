@@ -7,6 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > It exists to keep you (Claude Code) aligned with the architecture between sessions, since you have no memory of prior work beyond what's in git.
 >
 > **v0.4 changes:** MVP scope trimmed — file-drop ingest only, MD-only render, fewer warehouse tables. Idempotence contract rebuilt around source-hash + LLM response cache. `project.md` split into bot-owned + PM-owned notes. Event schema gains `schema_version`, `run_id`, `retracted`, `supersedes`, structured `actor`, discriminated `payload`. Operations log added. Stage 3 renamed Warehouse Load. See `REVIEW_NOTES.md`.
+>
+> **v0.5 changes:** Phase 0.5 complete. HTML rendering ships — both single-project status dashboard and portfolio cross-project dashboard. MCP ingest live (Gmail/Drive/Calendar). `pipeline portfolio` command added. `_BASE_CSS` dropped; design system CSS inlined from `design-system/`. `PortfolioProject` model extended with `client_id`, `sponsor`, `phase`, `last_source_ts`, `events_count`.
 
 ---
 
@@ -115,7 +117,7 @@ Six layers, each idempotent and independently testable:
 ┌───────────────────────────────────────────────────────┐
 │  6. Commit         → git PR drafts (HITL)             │
 ├───────────────────────────────────────────────────────┤
-│  5. Render         → MD reports (HTML in Phase 0.5)   │
+│  5. Render         → MD + HTML reports (both shipped)  │
 ├───────────────────────────────────────────────────────┤
 │  4. Analyze        → DuckDB queries + Claude API      │
 ├───────────────────────────────────────────────────────┤
@@ -123,7 +125,7 @@ Six layers, each idempotent and independently testable:
 ├───────────────────────────────────────────────────────┤
 │  2. Parse          → sources → project.md + events    │
 ├───────────────────────────────────────────────────────┤
-│  1. Ingest         → file drops (MCP in Phase 0.5)    │
+│  1. Ingest         → file drops + MCP (both shipped)  │
 └───────────────────────────────────────────────────────┘
 ```
 
@@ -149,13 +151,13 @@ src/project_agent/
 ├── events.py           ← NDJSON append/query/dedupe
 ├── warehouse.py        ← DuckDB load/query
 ├── projects.py         ← project.md parse/render
-├── render.py           ← MD emitter (HTML Phase 0.5)
+├── render.py           ← MD + HTML emitter (single-project + portfolio)
 ├── git.py              ← branch/PR helpers
 ├── llm.py              ← Claude API client + cache wrapper
 ├── ingest/
-│   ├── inbox.py        ← file-drop reader (MVP)
+│   ├── inbox.py        ← file-drop reader
 │   ├── backlog.py      ← CSV/JSON reader
-│   └── mcp.py          ← Gmail/Drive/Calendar (Phase 0.5)
+│   └── mcp.py          ← Gmail/Drive/Calendar (shipped Phase 0.5)
 └── signals/
     ├── deterministic.py ← SQL-based detectors
     └── llm.py           ← Claude-evaluated detectors (Phase 1+)
@@ -163,20 +165,19 @@ src/project_agent/
 
 ---
 
-## Current Phase: Phase 0.5 (HTML + MCP)
+## Current Phase: Phase 1 (LLM Signals)
 
-Phase 0 (MVP) is **complete** — all six stages run end-to-end, idempotence verified, three deterministic signals firing, package-boundary lint passing.
+Phase 0.5 is **complete** — MCP ingest, 30-day corpus, HTML rendering v2, and portfolio PR shape are all shipped.
 
-**Phase 0.5 status:**
-- ✅ MCP ingest — `project_agent.ingest.mcp` implemented (Gmail/Drive/Calendar via `google-api-python-client`). Gate: set `GOOGLE_TOKEN_PATH=<path-to-token.json>`. If unset, pipeline falls back to file-drop only.
-- ✅ 30-day history backfill — 17 synthetic source files in `_inbox/` spanning 2026-04-10 to 2026-05-14.
-- 🔲 HTML rendering (Phase 0.5) — design system to be added separately; `render.py` is still MD-only.
-- ✅ Portfolio PR shape — **portfolio-scoped**. `pipeline portfolio` discovers all projects in `projects/`, runs stages 1–5 per project, then opens one PR with a digest table. `pipeline run --project <id>` retained for single-project dev use.
+**Phase 0.5 — delivered:**
+- ✅ MCP ingest — `project_agent.ingest.mcp` (Gmail/Drive/Calendar via `google-api-python-client`). Gate: set `GOOGLE_TOKEN_PATH=<path-to-token.json>`. If unset, falls back to file-drop only.
+- ✅ 30-day history backfill — 17 synthetic source files spanning 2026-04-10 to 2026-05-14.
+- ✅ HTML rendering — both single-project status dashboard and portfolio cross-project dashboard. Design system CSS inlined from `design-system/`. `_BASE_CSS` removed. Editorial header, 5-card fact strip, indicator grid (6 categories × project), attention strip (top-3 by score), verdict callout. Byte-identical on re-run.
+- ✅ Portfolio PR shape — `pipeline portfolio` discovers all projects in `projects/`, runs stages 1–5 per project, renders portfolio HTML dashboard, then opens one PR. `pipeline run --project <id>` retained for single-project dev use.
 
-**Out of scope for Phase 0.5 — do not build these yet:**
-- LLM signals (Phase 1)
-- `risks` / `decisions` / `milestones` / `stakeholders` warehouse tables (Phase 1)
-- Portfolio rollup (Phase 2), outbound emails (Phase 3), Jira (Phase 4), multi-agent (Phase 5)
+**Out of scope for Phase 1 — do not build these yet:**
+- `risks` / `decisions` / `milestones` / `stakeholders` warehouse tables (build with signals that need them)
+- Portfolio cross-project signals (Phase 2), outbound emails (Phase 3), Jira (Phase 4), multi-agent (Phase 5)
 
 ---
 
@@ -262,6 +263,8 @@ Each signal has a JSON spec under `data/schemas/signals/<type>.json`. SQL detect
 - **Expecting `_inbox/` to retain skipped files.** `scan_inbox` now deletes files from `_inbox/` when their `source_hash` is already in `manifest.json`. This keeps the inbox clean across MCP re-fetches; don't rely on skipped files persisting there.
 - **Hand-editing `events.ndjson`.** Append-only, package-mediated. Use `event_retracted` events instead.
 - **Forgetting the operations log.** Each stage must update `data/runs/<run_id>.json`.
+- **Committing pipeline outputs to a dev branch.** `project.md`, `events.ndjson`, `reports/`, `manifest.json`, `parse_manifest.json`, and `data/runs/*.json` are all gitignored. On dev branches they stay local. The pipeline's `run_commit` / `run_commit_portfolio` stages use `git add -f` (via `project_agent.git.commit_all(force_paths=[...])`) to include them only on `auto/<date>` branches. Don't bypass this with `git add -A` outside of the package.
+- **Using `project.md` as the project discovery anchor.** `_discover_projects` checks for `project.notes.md`, not `project.md`. `project.md` is gitignored and won't exist on a fresh clone. Always create `project.notes.md` first when adding a new project.
 
 ---
 
@@ -270,14 +273,17 @@ Each signal has a JSON spec under `data/schemas/signals/<type>.json`. SQL detect
 - **MCP ingest is live in Phase 0.5.** Set `GOOGLE_TOKEN_PATH=<path-to-token.json>` (OAuth2 authorized-user format). Without it, the stage silently skips MCP and runs file-drop only. Token is refreshed in-place when expired.
 - **MCP adapters write to `_inbox/` only.** They do not emit events. `inbox.scan_inbox` handles classification, manifest dedup, and event emission — same as file-drop. `scan_inbox` now deletes already-known files from `_inbox/` (hash in manifest) so re-fetched MCP content does not accumulate.
 - **Phase 0.5 signals are deterministic only.** LLM signals come in Phase 1.
-- **Phase 0.5 render is MD only.** HTML rendering deferred to design-system work.
+- **Phase 0.5 render ships both MD and HTML.** `render_status()` emits MD; `render_html()` emits single-project HTML; `render_portfolio_html()` emits the cross-project dashboard. All three are idempotent.
 - **Idempotence is anchored on source-hash + LLM response cache.** Event-hash dedup is a secondary defense.
 - **`event_retracted` is the mechanism for fixing bad data.** Never mutate `events.ndjson`.
 - **`Event.payload` and `actor` are discriminated unions.** No `dict[str, Any]`.
 - **No ABCs, no plugin systems, no DI containers.** Pure functions and pydantic. `typing.Protocol` if two concrete impls share a shape.
 - **Project ID convention:** `<client>--<project>` until decided (PRD §13.1).
+- **Runtime outputs are gitignored; pipeline uses `git add -f` to commit them.** All generated files (`project.md`, `events.ndjson`, `reports/`, manifests, run logs) are in `.gitignore` so dev branches stay clean. `project_agent.git.commit_all(force_paths=[...])` adds them explicitly on `auto/<date>` branches. This is intentional — do not remove these gitignore rules.
+- **Project discovery uses `project.notes.md`.** `pipeline portfolio` finds projects via `_discover_projects`, which checks for `project.notes.md` (PM-owned, always committed) rather than `project.md` (bot-generated, gitignored). A fresh clone will have `project.notes.md` but not `project.md`; that is the correct state.
+- **`design-system/` is tracked in git.** `tokens.css`, `system.css`, and the reference HTML files are committed so teammates can reference and extend the design language when building new report layouts.
 
-**Open and deferred** (ask first, don't decide unilaterally): outbox storage policy, cron host & threat model, portfolio PR shape, source artifact size, LLM cost cap policy. See PRD §13.
+**Open and deferred** (ask first, don't decide unilaterally): outbox storage policy, cron host & threat model, source artifact size, LLM cost cap policy, Δ7d snapshot strategy for indicator grid. See PRD §13.
 
 ---
 
@@ -299,10 +305,10 @@ All delegate to `python -m pipeline ...` under the hood.
 1. Don't fix it speculatively. Ask the maintainer first.
 2. Run the test suite. Read the failures.
 3. Check `git log` and recent PR descriptions for context.
-4. Check `data/events.ndjson` for the last few events.
-5. If `data/` looks corrupt: restore from git history (`git checkout <previous-commit> -- data/`). Do not repair manually.
+4. Check `projects/<id>/events.ndjson` for the last few events (per-project log; not tracked on dev branches).
+5. If project state looks corrupt: the source files and `project.notes.md` are always in git. Re-run the pipeline from a clean state using `uv run python scripts/reset_demo.py` (demo) or by deleting the local `events.ndjson` and `project.md` files and re-running.
 
 ---
 
-*CLAUDE.md v0.4 — companion to PRD.md v0.4 and ARCHITECTURE.md v0.2.*
+*CLAUDE.md v0.5.1 — companion to PRD.md v0.5 and ARCHITECTURE.md v0.2.*
 *Update this file whenever a working agreement changes.*

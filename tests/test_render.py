@@ -6,6 +6,17 @@ from pathlib import Path
 import pytest
 
 from project_agent import render
+from project_agent.render import (
+    PortfolioProject,
+    _attention_score,
+    _breadcrumb_html,
+    _category_cell,
+    _client_of,
+    _headline_html,
+    _severity_breakdown,
+    _silent_list_html,
+    _verdict_callout_html,
+)
 from project_agent.schemas import Signal
 from pipeline.stages import run_render
 
@@ -38,8 +49,13 @@ def _signal(
     )
 
 
+@pytest.fixture
+def design_system_dir() -> Path:
+    return Path(__file__).parent.parent / "design-system"
+
+
 # ---------------------------------------------------------------------------
-# Unit tests
+# Unit tests — markdown
 # ---------------------------------------------------------------------------
 
 @pytest.mark.unit
@@ -143,15 +159,17 @@ def test_report_written_to_reports_dir(project_dir: Path) -> None:
 def test_run_render_returns_ok(project_dir: Path) -> None:
     result = run_render("test--project", project_dir, [], "run-001")
     assert result.status == "ok"
-    assert result.counts["reports_written"] == 1
+    assert result.counts["reports_written"] == 2
     assert result.counts["errors"] == 0
 
 
 @pytest.mark.integration
 def test_run_render_creates_report_file(project_dir: Path) -> None:
     run_render("test--project", project_dir, [], "run-001")
-    reports = list((project_dir / "reports").glob("status-*.md"))
-    assert len(reports) == 1
+    md_reports = list((project_dir / "reports").glob("status-*.md"))
+    html_reports = list((project_dir / "reports").glob("status-*.html"))
+    assert len(md_reports) == 1
+    assert len(html_reports) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -175,3 +193,216 @@ def test_render_never_writes_to_notes_file(project_dir: Path) -> None:
     original = (project_dir / "project.notes.md").read_text(encoding="utf-8")
     render.render_status(project_dir, [], "run-001")
     assert (project_dir / "project.notes.md").read_text(encoding="utf-8") == original
+
+
+# ---------------------------------------------------------------------------
+# HTML — unit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_html_report_is_valid_html(project_dir: Path, design_system_dir: Path) -> None:
+    path = render.render_html(project_dir, [], "run-001", design_system_dir=design_system_dir)
+    content = path.read_text(encoding="utf-8")
+    assert content.startswith("<!DOCTYPE html>")
+    assert "</html>" in content
+
+
+@pytest.mark.unit
+def test_html_report_contains_project_info(project_dir: Path, design_system_dir: Path) -> None:
+    path = render.render_html(project_dir, [], "run-001", design_system_dir=design_system_dir)
+    content = path.read_text(encoding="utf-8")
+    assert "test--project" in content
+    assert "green" in content
+    assert "pd-head" in content
+
+
+@pytest.mark.unit
+def test_html_report_contains_signals(project_dir: Path, design_system_dir: Path) -> None:
+    signals = [
+        _signal("action_aging", category="action", severity="high"),
+        _signal("blocker_unowned", category="blocker", severity="medium"),
+    ]
+    path = render.render_html(project_dir, signals, "run-001", design_system_dir=design_system_dir)
+    content = path.read_text(encoding="utf-8")
+    assert "action_aging" in content
+    assert "blocker_unowned" in content
+    assert "sev-high" in content
+    assert "sev-medium" in content
+    assert "signal-card" in content
+
+
+@pytest.mark.unit
+def test_html_report_written_with_html_suffix(project_dir: Path, design_system_dir: Path) -> None:
+    path = render.render_html(project_dir, [], "run-001", design_system_dir=design_system_dir)
+    assert path.suffix == ".html"
+    assert path.name.startswith("status-")
+    assert path.parent == project_dir / "reports"
+
+
+@pytest.mark.unit
+def test_portfolio_html_contains_all_projects(tmp_path: Path, design_system_dir: Path) -> None:
+    summaries = [
+        PortfolioProject(
+            project_id="alpha--project",
+            status="green",
+            run_id="run-a",
+            signals=[],
+            signals_new=0,
+            errors=0,
+            stage_statuses={"ingest": "ok", "render": "ok"},
+        ),
+        PortfolioProject(
+            project_id="beta--project",
+            status="amber",
+            run_id="run-b",
+            signals=[_signal("action_aging")],
+            signals_new=1,
+            errors=0,
+            stage_statuses={"ingest": "ok", "render": "ok"},
+        ),
+    ]
+    output_dir = tmp_path / "reports"
+    path = render.render_portfolio_html(summaries, output_dir, design_system_dir=design_system_dir)
+    content = path.read_text(encoding="utf-8")
+    assert "alpha--project" in content
+    assert "beta--project" in content
+    assert "action_aging" in content
+    assert content.startswith("<!DOCTYPE html>")
+    assert "pd-shell" in content
+    assert "ig-row" in content
+    assert "pd-attn" in content
+
+
+# ---------------------------------------------------------------------------
+# HTML — idempotence tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.idempotence
+def test_html_render_idempotent(project_dir: Path, design_system_dir: Path) -> None:
+    signals = [_signal("action_aging", evidence=["evt-abc"])]
+    path1 = render.render_html(project_dir, signals, "run-001", design_system_dir=design_system_dir)
+    content1 = path1.read_text(encoding="utf-8")
+    path2 = render.render_html(project_dir, signals, "run-001", design_system_dir=design_system_dir)
+    content2 = path2.read_text(encoding="utf-8")
+    assert content1 == content2
+
+
+@pytest.mark.idempotence
+def test_html_render_never_writes_to_notes_file(project_dir: Path, design_system_dir: Path) -> None:
+    original = (project_dir / "project.notes.md").read_text(encoding="utf-8")
+    render.render_html(project_dir, [], "run-001", design_system_dir=design_system_dir)
+    assert (project_dir / "project.notes.md").read_text(encoding="utf-8") == original
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — new v2 helpers
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_attention_score_orders_by_severity() -> None:
+    low_proj = PortfolioProject(
+        project_id="a--x", status="green", run_id="r", signals=[_signal(severity="low")],
+        signals_new=0, errors=0, stage_statuses={},
+    )
+    med_proj = PortfolioProject(
+        project_id="b--x", status="amber", run_id="r",
+        signals=[_signal(severity="medium")],
+        signals_new=0, errors=0, stage_statuses={},
+    )
+    high_proj = PortfolioProject(
+        project_id="c--x", status="red", run_id="r", signals=[_signal(severity="high")],
+        signals_new=0, errors=0, stage_statuses={},
+    )
+    scores = [_attention_score(p) for p in [low_proj, med_proj, high_proj]]
+    assert scores[2] > scores[1] > scores[0]
+
+
+@pytest.mark.unit
+def test_category_cell_classifies_signals() -> None:
+    high_sig = _signal(category="risk", severity="high")
+    med_sig = _signal(category="risk", severity="medium")
+    low_sig = _signal(category="risk", severity="low")
+
+    cls, _ = _category_cell([high_sig], "risk")
+    assert cls == "is-red"
+
+    cls, _ = _category_cell([med_sig], "risk")
+    assert cls == "is-yellow"
+
+    cls, _ = _category_cell([low_sig], "risk")
+    assert cls == "is-green"
+
+    cls, _ = _category_cell([], "risk")
+    assert cls == "is-empty"
+
+
+@pytest.mark.unit
+def test_client_grouping_splits_on_double_dash() -> None:
+    assert _client_of("acme--demo") == "acme"
+    assert _client_of("acme--demo--extra") == "acme"
+    assert _client_of("nodash") == "nodash"
+
+
+@pytest.mark.unit
+def test_severity_breakdown_text() -> None:
+    signals = [
+        _signal(severity="high"),
+        _signal(severity="high"),
+        _signal(severity="medium"),
+    ]
+    result = _severity_breakdown(signals)
+    assert result == "2 high · 1 med"
+
+
+@pytest.mark.unit
+def test_severity_breakdown_omits_zero_counts() -> None:
+    signals = [_signal(severity="low")]
+    result = _severity_breakdown(signals)
+    assert "high" not in result
+    assert "med" not in result
+    assert "low" in result
+
+
+@pytest.mark.unit
+def test_headline_all_green_uses_sage_italic() -> None:
+    html_green = _headline_html(3, 0)
+    assert "var(--sage)" in html_green
+    assert "var(--coral)" not in html_green
+
+    html_red = _headline_html(3, 1)
+    assert "var(--coral)" in html_red
+    assert "var(--sage)" not in html_red
+
+
+@pytest.mark.unit
+def test_verdict_callout_omitted_when_no_signals() -> None:
+    assert _verdict_callout_html(None) == ""
+
+
+@pytest.mark.unit
+def test_silent_list_omitted_when_empty() -> None:
+    summaries = [
+        PortfolioProject(
+            project_id="a--x", status="green", run_id="r", signals=[],
+            signals_new=0, errors=0, stage_statuses={},
+            last_source_ts=None,
+        ),
+    ]
+    assert _silent_list_html(summaries) == ""
+
+
+@pytest.mark.unit
+def test_breadcrumb_includes_project_id() -> None:
+    html = _breadcrumb_html("my--project")
+    assert "my--project" in html
+    assert "pd-crumb" in html
+
+
+@pytest.mark.unit
+def test_breadcrumb_portfolio_only_without_project() -> None:
+    html = _breadcrumb_html()
+    assert "pd-crumb" in html
+    assert "here" not in html
