@@ -370,7 +370,15 @@ def run_warehouse(
 
 def _load_signal_thresholds(schemas_dir: Path) -> dict[str, dict[str, object]]:
     result: dict[str, dict[str, object]] = {}
-    for name in ("action_aging", "action_unowned", "blocker_unowned"):
+    for name in (
+        "action_aging",
+        "action_unowned",
+        "blocker_unowned",
+        "risk_unaddressed",
+        "blocker_aging",
+        "deliverable_drift",
+        "stakeholder_inactivity",
+    ):
         path = schemas_dir / f"{name}.json"
         result[name] = dict(json.loads(path.read_text(encoding="utf-8"))) if path.exists() else {}
     return result
@@ -388,6 +396,7 @@ def run_analyze(
     events_path: Path,
     run_id: str,
     schemas_dir: Path | None = None,
+    project_dir: Path | None = None,
 ) -> tuple[StageResult, list[Signal]]:
     """Stage 4 — deterministic signal detection (PRD §8.4, MVP).
 
@@ -405,6 +414,23 @@ def run_analyze(
 
     try:
         thresholds = _load_signal_thresholds(schemas_dir)
+
+        # Load stakeholder watchlist from project.md front-matter when available
+        if project_dir is not None:
+            try:
+                project_data = projects.load_project(project_dir)
+                raw_stakeholders = project_data.get("metadata", {}).get("stakeholders", [])
+                watchlist = [
+                    s for s in (raw_stakeholders or [])
+                    if isinstance(s, dict) and s.get("contact_email") and s.get("cadence_days")
+                ]
+                thresholds["stakeholder_inactivity"] = {
+                    **thresholds.get("stakeholder_inactivity", {}),
+                    "watchlist": watchlist,
+                }
+            except Exception:
+                logger.warning("Could not load stakeholder config from project.md — skipping stakeholder_inactivity")
+
         # Dedup key: source_hash encodes signal_type + sorted evidence, stable across runs
         seen_source_hashes = {
             e.source_hash
@@ -416,6 +442,10 @@ def run_analyze(
             (deterministic.detect_action_aging, "action_aging"),
             (deterministic.detect_action_unowned, "action_unowned"),
             (deterministic.detect_blocker_unowned, "blocker_unowned"),
+            (deterministic.detect_risk_unaddressed, "risk_unaddressed"),
+            (deterministic.detect_blocker_aging, "blocker_aging"),
+            (deterministic.detect_deliverable_drift, "deliverable_drift"),
+            (deterministic.detect_stakeholder_inactivity, "stakeholder_inactivity"),
         ]:
             try:
                 all_signals.extend(detector_fn(db_path, project_id, run_id, thresholds.get(key, {})))
