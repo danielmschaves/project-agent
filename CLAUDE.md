@@ -9,6 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > **v0.4 changes:** MVP scope trimmed — file-drop ingest only, MD-only render, fewer warehouse tables. Idempotence contract rebuilt around source-hash + LLM response cache. `project.md` split into bot-owned + PM-owned notes. Event schema gains `schema_version`, `run_id`, `retracted`, `supersedes`, structured `actor`, discriminated `payload`. Operations log added. Stage 3 renamed Warehouse Load. See `REVIEW_NOTES.md`.
 >
 > **v0.5 changes:** Phase 0.5 complete. HTML rendering ships — both single-project status dashboard and portfolio cross-project dashboard. MCP ingest live (Gmail/Drive/Calendar). `pipeline portfolio` command added. `_BASE_CSS` dropped; design system CSS inlined from `design-system/`. `PortfolioProject` model extended with `client_id`, `sponsor`, `phase`, `last_source_ts`, `events_count`.
+>
+> **v1.0 (Phase 1, PR 1):** Schema + Parse extensions. `run_parse()` now emits `risk_added`, `decision_made`, and `milestone_added` events from extracted source content. `extract-context.md` bumped to v2 (adds `milestones` extraction — triggers cache miss on all prior sources, re-parsing them under the new prompt). `SourceIngestedPayload` gains optional `sender` field (populated from `From:` header for email sources; used by the upcoming `stakeholder_inactivity` signal). Two new payload types: `MilestoneAddedPayload`, `PipelineHealthPayload`. `projects.update_project()` now renders `Risks`, `Decisions`, and `Milestones` sections in `project.md`.
 
 ---
 
@@ -175,8 +177,14 @@ Phase 0.5 is **complete** — MCP ingest, 30-day corpus, HTML rendering v2, and 
 - ✅ HTML rendering — both single-project status dashboard and portfolio cross-project dashboard. Design system CSS inlined from `design-system/`. `_BASE_CSS` removed. Editorial header, 5-card fact strip, indicator grid (6 categories × project), attention strip (top-3 by score), verdict callout. Byte-identical on re-run.
 - ✅ Portfolio PR shape — `pipeline portfolio` discovers all projects in `projects/`, runs stages 1–5 per project, renders portfolio HTML dashboard, then opens one PR. `pipeline run --project <id>` retained for single-project dev use.
 
-**Out of scope for Phase 1 — do not build these yet:**
-- `risks` / `decisions` / `milestones` / `stakeholders` warehouse tables (build with signals that need them)
+**Phase 1 — in progress (sequenced as 4 PRs):**
+- ✅ PR 1: Schema + Parse extensions (`MilestoneAddedPayload`, `PipelineHealthPayload`, `sender` on `SourceIngestedPayload`; `run_parse()` emits `risk_added`/`decision_made`/`milestone_added`; `extract-context.md` v2)
+- 🔲 PR 2: Warehouse Phase 1 views (`risks`, `decisions`, `milestones` views)
+- 🔲 PR 3: New deterministic signals (`risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity`)
+- 🔲 PR 4: LLM signals + cost cap (`signals/llm.py`; 3 prompts; `config/signals.yaml`)
+- 🔲 PR 5: Scheduled operation (deferred — after LLM signals are stable)
+
+**Out of scope until later phases:**
 - Portfolio cross-project signals (Phase 2), outbound emails (Phase 3), Jira (Phase 4), multi-agent (Phase 5)
 
 ---

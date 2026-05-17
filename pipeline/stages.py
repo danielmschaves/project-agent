@@ -16,9 +16,12 @@ from project_agent.render import PortfolioProject
 from project_agent.schemas import (
     ActionAddedPayload,
     BlockerAddedPayload,
+    DecisionMadePayload,
     DeterministicActor,
     Event,
     LLMActor,
+    MilestoneAddedPayload,
+    RiskAddedPayload,
     RunLog,
     Signal,
     SignalDetectedPayload,
@@ -73,6 +76,7 @@ def run_ingest(
                 filename=result.filename,
                 source_type=result.source_type,
                 size_bytes=result.size_bytes,
+                sender=result.sender,
             )
             event = Event(
                 event_id=str(uuid.uuid4()),
@@ -150,21 +154,47 @@ def _make_fact_event(
     actor = LLMActor(kind="llm", model=model, prompt=f"{prompt_name}@{prompt_version}")
     fact_type = fact["type"]
 
+    payload: ActionAddedPayload | BlockerAddedPayload | RiskAddedPayload | DecisionMadePayload | MilestoneAddedPayload
     if fact_type == "action_added":
-        payload: ActionAddedPayload | BlockerAddedPayload = ActionAddedPayload(
+        payload = ActionAddedPayload(
             type="action_added",
             description=fact["description"],
             owner=fact.get("owner"),
             due=fact.get("due"),
             status=fact.get("status", "open"),
         )
-    else:
+    elif fact_type == "blocker_added":
         payload = BlockerAddedPayload(
             type="blocker_added",
             description=fact["description"],
             owner=fact.get("owner"),
             due=fact.get("due"),
         )
+    elif fact_type == "risk_added":
+        payload = RiskAddedPayload(
+            type="risk_added",
+            description=fact["description"],
+            severity=fact.get("severity", "medium"),
+            owner=fact.get("owner"),
+            status=fact.get("status", "open"),
+        )
+    elif fact_type == "decision_made":
+        payload = DecisionMadePayload(
+            type="decision_made",
+            description=fact["description"],
+            rationale=fact.get("rationale"),
+            decided_by=fact.get("decided_by"),
+        )
+    elif fact_type == "milestone_added":
+        payload = MilestoneAddedPayload(
+            type="milestone_added",
+            description=fact["description"],
+            target_date=fact.get("target_date"),
+            status=fact.get("status", "open"),
+            owner=fact.get("owner"),
+        )
+    else:
+        raise ValueError(f"Unknown fact type: {fact_type!r}")
 
     event = Event(
         event_id=event_id,
@@ -237,21 +267,20 @@ def run_parse(
             )
 
             emitted_ids: list[str] = []
-            for fact in result.get("actions", []):
-                fact = {**fact, "type": "action_added"}
-                eid, evt = _make_fact_event(fact, src_event, project_id, run_id, prompt_name, prompt_version, model)
-                events_api.append(evt, events_path)
-                emitted_ids.append(eid)
-                events_emitted += 1
-                all_facts.append(fact)
-
-            for fact in result.get("blockers", []):
-                fact = {**fact, "type": "blocker_added"}
-                eid, evt = _make_fact_event(fact, src_event, project_id, run_id, prompt_name, prompt_version, model)
-                events_api.append(evt, events_path)
-                emitted_ids.append(eid)
-                events_emitted += 1
-                all_facts.append(fact)
+            for key, type_tag in [
+                ("actions", "action_added"),
+                ("blockers", "blocker_added"),
+                ("risks", "risk_added"),
+                ("decisions", "decision_made"),
+                ("milestones", "milestone_added"),
+            ]:
+                for fact in result.get(key, []):
+                    fact = {**fact, "type": type_tag}
+                    eid, evt = _make_fact_event(fact, src_event, project_id, run_id, prompt_name, prompt_version, model)
+                    events_api.append(evt, events_path)
+                    emitted_ids.append(eid)
+                    events_emitted += 1
+                    all_facts.append(fact)
 
             parse_manifest[src_key] = emitted_ids
             _save_parse_manifest(parse_manifest_path, parse_manifest)

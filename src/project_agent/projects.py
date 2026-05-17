@@ -9,7 +9,7 @@ import frontmatter
 
 logger = logging.getLogger(__name__)
 
-_CANONICAL_SECTIONS = {"Actions", "Blockers"}
+_CANONICAL_SECTIONS = {"Actions", "Blockers", "Risks", "Decisions", "Milestones"}
 
 
 # ---------------------------------------------------------------------------
@@ -54,9 +54,11 @@ def _parse_sections(content: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 def update_project(project_dir: Path, facts: list[dict[str, Any]]) -> None:
-    """Rewrite project.md canonical sections (Actions, Blockers) from facts.
+    """Rewrite project.md canonical sections from facts.
 
-    All other sections (Mission, Scope, …) are preserved verbatim.
+    Canonical sections (Actions, Blockers, Risks, Decisions, Milestones) are
+    fully overwritten from the provided facts list.  All other sections
+    (Mission, Scope, …) are preserved verbatim.
     project.notes.md is never read or written.
     """
     path = project_dir / "project.md"
@@ -66,10 +68,13 @@ def update_project(project_dir: Path, facts: list[dict[str, Any]]) -> None:
     updated = dict(existing)
     updated["Actions"] = _build_actions(facts)
     updated["Blockers"] = _build_blockers(facts)
+    updated["Risks"] = _build_risks(facts)
+    updated["Decisions"] = _build_decisions(facts)
+    updated["Milestones"] = _build_milestones(facts)
 
     # Preserve original section order; append canonical ones if absent
     order = list(existing.keys())
-    for sec in ("Actions", "Blockers"):
+    for sec in ("Actions", "Blockers", "Risks", "Decisions", "Milestones"):
         if sec not in order:
             order.append(sec)
 
@@ -108,4 +113,43 @@ def _build_blockers(facts: list[dict[str, Any]]) -> str:
         owner = b.get("owner") or "—"
         due = b.get("due") or "—"
         lines.append(f"- {b['description']} | owner: {owner} | due: {due}")
+    return "\n".join(lines)
+
+
+def _build_risks(facts: list[dict[str, Any]]) -> str:
+    items = [f for f in facts if f.get("type") == "risk_added"]
+    if not items:
+        return ""
+    lines = ["| Description | Severity | Owner | Status |", "|---|---|---|---|"]
+    for r in items:
+        owner = r.get("owner") or "—"
+        severity = r.get("severity", "medium")
+        status = r.get("status", "open")
+        lines.append(f"| {r['description']} | {severity} | {owner} | {status} |")
+    return "\n".join(lines)
+
+
+def _build_decisions(facts: list[dict[str, Any]]) -> str:
+    items = [f for f in facts if f.get("type") == "decision_made"]
+    if not items:
+        return ""
+    lines = ["| Decision | Rationale | Decided By |", "|---|---|---|"]
+    for d in items:
+        rationale = d.get("rationale") or "—"
+        decided_by = d.get("decided_by") or "—"
+        lines.append(f"| {d['description']} | {rationale} | {decided_by} |")
+    return "\n".join(lines)
+
+
+def _build_milestones(facts: list[dict[str, Any]]) -> str:
+    items = [f for f in facts if f.get("type") == "milestone_added"]
+    if not items:
+        return ""
+    lines: list[str] = []
+    for m in items:
+        status = m.get("status", "open")
+        checkbox = "[x]" if status == "done" else "[ ]"
+        target_date = m.get("target_date") or "—"
+        owner = m.get("owner") or "—"
+        lines.append(f"- {checkbox} {m['description']} | target: {target_date} | owner: {owner}")
     return "\n".join(lines)

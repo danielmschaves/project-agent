@@ -220,6 +220,111 @@ def test_run_parse_empty_inbox_no_events(
     assert result.counts["events_emitted"] == 0
 
 
+@pytest.mark.integration
+def test_run_parse_emits_risk_events(
+    project_dir: Path, events_path: Path, tmp_path: Path
+) -> None:
+    _seed_inbox(project_dir, "update.md", b"# Status update")
+    run_ingest("test--project", project_dir, events_path, "run-001")
+
+    prompts_dir = tmp_path / "prompts"
+    _seed_prompts(prompts_dir)
+    cache_dir = tmp_path / "cache"
+
+    fake_response = {
+        "actions": [],
+        "blockers": [],
+        "risks": [{"description": "Vendor delay", "severity": "high", "owner": "alice"}],
+        "decisions": [],
+        "milestones": [],
+    }
+
+    result = run_parse(
+        project_id="test--project",
+        project_dir=project_dir,
+        events_path=events_path,
+        cache_dir=cache_dir,
+        prompts_dir=prompts_dir,
+        run_id="run-001",
+        client=_make_fake_client(fake_response),
+    )
+
+    assert result.status == "ok"
+    assert result.counts["events_emitted"] == 1
+    evts = events_api.query(events_path, types=["risk_added"])
+    assert len(evts) == 1
+    assert evts[0].project_id == "test--project"
+
+
+@pytest.mark.integration
+def test_run_parse_emits_decision_and_milestone_events(
+    project_dir: Path, events_path: Path, tmp_path: Path
+) -> None:
+    _seed_inbox(project_dir, "kickoff.md", b"# Kickoff notes")
+    run_ingest("test--project", project_dir, events_path, "run-001")
+
+    prompts_dir = tmp_path / "prompts"
+    _seed_prompts(prompts_dir)
+    cache_dir = tmp_path / "cache"
+
+    fake_response = {
+        "actions": [],
+        "blockers": [],
+        "risks": [],
+        "decisions": [{"description": "Use PostgreSQL", "rationale": "Team familiarity", "decided_by": "alice"}],
+        "milestones": [{"description": "MVP launch", "target_date": "2026-07-01", "status": "open", "owner": "bob"}],
+    }
+
+    result = run_parse(
+        project_id="test--project",
+        project_dir=project_dir,
+        events_path=events_path,
+        cache_dir=cache_dir,
+        prompts_dir=prompts_dir,
+        run_id="run-001",
+        client=_make_fake_client(fake_response),
+    )
+
+    assert result.status == "ok"
+    assert result.counts["events_emitted"] == 2
+    assert len(events_api.query(events_path, types=["decision_made"])) == 1
+    assert len(events_api.query(events_path, types=["milestone_added"])) == 1
+
+
+@pytest.mark.integration
+def test_run_parse_all_fact_types(
+    project_dir: Path, events_path: Path, tmp_path: Path
+) -> None:
+    _seed_inbox(project_dir, "weekly.md", b"# Weekly update")
+    run_ingest("test--project", project_dir, events_path, "run-001")
+
+    prompts_dir = tmp_path / "prompts"
+    _seed_prompts(prompts_dir)
+    cache_dir = tmp_path / "cache"
+
+    fake_response = {
+        "actions": [{"description": "Fix auth", "owner": "alice", "due": None, "status": "open"}],
+        "blockers": [{"description": "No staging env", "owner": None, "due": None}],
+        "risks": [{"description": "Scope creep", "severity": "medium", "owner": None}],
+        "decisions": [{"description": "Skip SSO for now", "rationale": None, "decided_by": None}],
+        "milestones": [{"description": "Beta release", "target_date": "2026-08-01", "status": "open", "owner": None}],
+    }
+
+    result = run_parse(
+        project_id="test--project",
+        project_dir=project_dir,
+        events_path=events_path,
+        cache_dir=cache_dir,
+        prompts_dir=prompts_dir,
+        run_id="run-001",
+        client=_make_fake_client(fake_response),
+    )
+
+    assert result.counts["events_emitted"] == 5
+    for event_type in ["action_added", "blocker_added", "risk_added", "decision_made", "milestone_added"]:
+        assert len(events_api.query(events_path, types=[event_type])) == 1
+
+
 # ---------------------------------------------------------------------------
 # Idempotence
 # ---------------------------------------------------------------------------
@@ -239,6 +344,9 @@ def test_run_parse_idempotent(
     fake_response = {
         "actions": [{"description": "Do thing", "owner": None, "due": None, "status": "open"}],
         "blockers": [],
+        "risks": [],
+        "decisions": [],
+        "milestones": [],
     }
 
     # First run
@@ -274,6 +382,53 @@ def test_run_parse_idempotent(
 
 
 @pytest.mark.idempotence
+def test_run_parse_all_facts_idempotent(
+    project_dir: Path, events_path: Path, tmp_path: Path
+) -> None:
+    """Second run must emit zero new events across all five fact types."""
+    _seed_inbox(project_dir, "kickoff.md", b"# Kickoff")
+    run_ingest("test--project", project_dir, events_path, "run-001")
+
+    prompts_dir = tmp_path / "prompts"
+    _seed_prompts(prompts_dir)
+    cache_dir = tmp_path / "cache"
+
+    fake_response = {
+        "actions": [{"description": "Task A", "owner": "alice", "due": None, "status": "open"}],
+        "blockers": [{"description": "Blocked by X", "owner": None, "due": None}],
+        "risks": [{"description": "Budget risk", "severity": "high", "owner": None}],
+        "decisions": [{"description": "Use Redis", "rationale": None, "decided_by": None}],
+        "milestones": [{"description": "Beta", "target_date": "2026-09-01", "status": "open", "owner": None}],
+    }
+
+    first = run_parse(
+        project_id="test--project",
+        project_dir=project_dir,
+        events_path=events_path,
+        cache_dir=cache_dir,
+        prompts_dir=prompts_dir,
+        run_id="run-001",
+        client=_make_fake_client(fake_response),
+    )
+    assert first.counts["events_emitted"] == 5
+
+    second = run_parse(
+        project_id="test--project",
+        project_dir=project_dir,
+        events_path=events_path,
+        cache_dir=cache_dir,
+        prompts_dir=prompts_dir,
+        run_id="run-002",
+        client=_raising_client(),
+    )
+    assert second.counts["sources_skipped"] == 1
+    assert second.counts["events_emitted"] == 0
+
+    for event_type in ["action_added", "blocker_added", "risk_added", "decision_made", "milestone_added"]:
+        assert len(events_api.query(events_path, types=[event_type])) == 1
+
+
+@pytest.mark.idempotence
 def test_run_parse_project_md_idempotent(
     project_dir: Path, events_path: Path, tmp_path: Path
 ) -> None:
@@ -288,6 +443,9 @@ def test_run_parse_project_md_idempotent(
     fake_response = {
         "actions": [{"description": "Fix bug", "owner": "alice", "due": None, "status": "open"}],
         "blockers": [],
+        "risks": [],
+        "decisions": [],
+        "milestones": [],
     }
 
     run_parse(

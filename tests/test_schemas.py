@@ -9,6 +9,8 @@ from project_agent.schemas import (
     Event,
     EventRetractedPayload,
     LLMActor,
+    MilestoneAddedPayload,
+    PipelineHealthPayload,
     RunLog,
     Signal,
     SignalDetectedPayload,
@@ -152,6 +154,79 @@ def test_event_retracted_payload() -> None:
     data["actor"] = {"kind": "human", "id": "pm@example.com"}
     event = Event(**data)
     assert isinstance(event.payload, EventRetractedPayload)
+
+
+@pytest.mark.unit
+def test_source_ingested_payload_with_sender() -> None:
+    payload = SourceIngestedPayload(
+        type="source_ingested",
+        filename="email.eml",
+        source_type="email",
+        size_bytes=512,
+        sender="Alice <alice@example.com>",
+    )
+    assert payload.sender == "Alice <alice@example.com>"
+
+
+@pytest.mark.unit
+def test_source_ingested_payload_sender_defaults_none() -> None:
+    payload = SourceIngestedPayload(
+        type="source_ingested",
+        filename="doc.md",
+        source_type="doc",
+        size_bytes=1024,
+    )
+    assert payload.sender is None
+
+
+@pytest.mark.unit
+def test_milestone_added_payload_round_trip() -> None:
+    data = _base_event()
+    data["payload"] = {
+        "type": "milestone_added",
+        "description": "MVP launch",
+        "target_date": "2026-07-01",
+        "status": "open",
+        "owner": "alice",
+    }
+    data["type"] = "milestone_added"
+    event = Event(**data)
+    assert isinstance(event.payload, MilestoneAddedPayload)
+    assert event.payload.target_date == "2026-07-01"
+
+
+@pytest.mark.unit
+def test_milestone_added_payload_defaults() -> None:
+    payload = MilestoneAddedPayload(type="milestone_added", description="Phase 1 complete")
+    assert payload.status == "open"
+    assert payload.target_date is None
+    assert payload.owner is None
+
+
+@pytest.mark.unit
+def test_pipeline_health_payload_round_trip() -> None:
+    data = _base_event()
+    data["payload"] = {
+        "type": "pipeline_health",
+        "category": "llm_budget_exceeded",
+        "message": "Daily LLM budget exceeded; skipping LLM signals.",
+        "detail": "spent=0.52 budget=0.50",
+    }
+    data["type"] = "pipeline_health"
+    data["actor"] = {"kind": "deterministic", "detector": "analyze"}
+    event = Event(**data)
+    assert isinstance(event.payload, PipelineHealthPayload)
+    assert event.payload.category == "llm_budget_exceeded"
+
+
+@pytest.mark.unit
+def test_pipeline_health_payload_detail_optional() -> None:
+    payload = PipelineHealthPayload(
+        type="pipeline_health",
+        category="ingest_failed",
+        message="OAuth token expired.",
+    )
+    assert payload.detail is None
 
 
 @pytest.mark.unit

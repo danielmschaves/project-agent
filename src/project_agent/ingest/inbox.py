@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import shutil
+from email import message_from_bytes
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -36,6 +37,7 @@ class IngestResult(BaseModel):
     source_hash: str
     source_ref: str  # path relative to project_dir, forward-slash separated
     is_new: bool
+    sender: str | None = None  # From: header, populated for email sources only
 
 
 def _classify(filename: str) -> str:
@@ -87,6 +89,15 @@ def scan_inbox(project_dir: Path) -> list[IngestResult]:
             continue
 
         source_type = _classify(file_path.name)
+
+        sender: str | None = None
+        if source_type == "email":
+            try:
+                msg = message_from_bytes(file_path.read_bytes())
+                sender = msg.get("From") or None
+            except Exception:
+                logger.debug("Could not parse From: header for %s", file_path.name)
+
         dest_dir = project_dir / "sources" / _TYPE_TO_FOLDER.get(source_type, "docs")
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / file_path.name
@@ -113,6 +124,7 @@ def scan_inbox(project_dir: Path) -> list[IngestResult]:
                 source_hash=source_hash,
                 source_ref=source_ref,
                 is_new=True,
+                sender=sender,
             )
         )
 
