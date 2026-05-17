@@ -57,6 +57,44 @@ _BLOCKERS_COLS = """
     json_extract_string(payload, '$.due')         AS due
 """
 
+_RISKS_COLS = """
+    event_id,
+    ts,
+    run_id,
+    project_id,
+    source_hash,
+    source_ref,
+    json_extract_string(payload, '$.description') AS description,
+    json_extract_string(payload, '$.severity')    AS severity,
+    json_extract_string(payload, '$.owner')       AS owner,
+    json_extract_string(payload, '$.status')      AS status
+"""
+
+_DECISIONS_COLS = """
+    event_id,
+    ts,
+    run_id,
+    project_id,
+    source_hash,
+    source_ref,
+    json_extract_string(payload, '$.description') AS description,
+    json_extract_string(payload, '$.rationale')   AS rationale,
+    json_extract_string(payload, '$.decided_by')  AS decided_by
+"""
+
+_MILESTONES_COLS = """
+    event_id,
+    ts,
+    run_id,
+    project_id,
+    source_hash,
+    source_ref,
+    json_extract_string(payload, '$.description') AS description,
+    json_extract_string(payload, '$.target_date') AS target_date,
+    json_extract_string(payload, '$.status')      AS status,
+    json_extract_string(payload, '$.owner')       AS owner
+"""
+
 
 def load(events_path: Path, db_path: Path) -> None:
     """Read events.ndjson and materialize into DuckDB tables and views.
@@ -154,4 +192,43 @@ def _create_views(con: duckdb.DuckDBPyConnection) -> None:
         SELECT {_BLOCKERS_COLS}
         FROM events_raw
         WHERE type = 'blocker_added'
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE VIEW risks AS
+        SELECT {_RISKS_COLS}
+        FROM events_raw
+        WHERE type = 'risk_added'
+          AND NOT retracted AND superseded_by IS NULL
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE VIEW risks_full AS
+        SELECT {_RISKS_COLS}
+        FROM events_raw
+        WHERE type = 'risk_added'
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE VIEW decisions AS
+        SELECT {_DECISIONS_COLS}
+        FROM events_raw
+        WHERE type = 'decision_made'
+          AND NOT retracted AND superseded_by IS NULL
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE VIEW decisions_full AS
+        SELECT {_DECISIONS_COLS}
+        FROM events_raw
+        WHERE type = 'decision_made'
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE VIEW milestones AS
+        SELECT {_MILESTONES_COLS}
+        FROM events_raw
+        WHERE type = 'milestone_added'
+          AND NOT retracted AND superseded_by IS NULL
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE VIEW milestones_full AS
+        SELECT {_MILESTONES_COLS}
+        FROM events_raw
+        WHERE type = 'milestone_added'
     """)

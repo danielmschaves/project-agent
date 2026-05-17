@@ -179,7 +179,7 @@ Phase 0.5 is **complete** — MCP ingest, 30-day corpus, HTML rendering v2, and 
 
 **Phase 1 — in progress (sequenced as 4 PRs):**
 - ✅ PR 1: Schema + Parse extensions (`MilestoneAddedPayload`, `PipelineHealthPayload`, `sender` on `SourceIngestedPayload`; `run_parse()` emits `risk_added`/`decision_made`/`milestone_added`; `extract-context.md` v2)
-- 🔲 PR 2: Warehouse Phase 1 views (`risks`, `decisions`, `milestones` views)
+- ✅ PR 2: Warehouse Phase 1 views — `risks`, `decisions`, `milestones` views (+ `_full` variants). All expose `event_id` for evidence linking. All filter `retracted=false AND superseded_by IS NULL` by default.
 - 🔲 PR 3: New deterministic signals (`risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity`)
 - 🔲 PR 4: LLM signals + cost cap (`signals/llm.py`; 3 prompts; `config/signals.yaml`)
 - 🔲 PR 5: Scheduled operation (deferred — after LLM signals are stable)
