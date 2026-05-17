@@ -348,11 +348,15 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
         ),
         "stages": {
             "portfolio_render": {
+                "name": portfolio_render.name,
                 "status": portfolio_render.status,
+                "duration_ms": portfolio_render.duration_ms,
                 "counts": portfolio_render.counts,
             },
             "commit": {
+                "name": commit_result.name,
                 "status": commit_result.status,
+                "duration_ms": commit_result.duration_ms,
                 "counts": commit_result.counts,
             },
         },
