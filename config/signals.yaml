@@ -1,1 +1,11 @@
+# Project Agent — LLM signal cost configuration
+#
+# llm_cost_cap_usd_per_project_per_day
+#   Per-project per-day spending limit for LLM-based signal detectors.
+#   Detectors run in order: risk_escalation → risk_emergent → tone_shift.
+#   When cumulative cost reaches this cap, a pipeline_health event is emitted
+#   and remaining detectors are skipped for that project that day.
+#
+#   Set to 0.0 to disable all LLM signals (silent opt-out, no health event).
+#   Claude Sonnet 4.6 approximate cost per call: ~$0.001–0.005 per project.
 llm_cost_cap_usd_per_project_per_day: 0.50

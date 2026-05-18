@@ -1,7 +1,7 @@
 ---
 purpose: Detect new project risks emerging from recent activity that have not been explicitly captured
 model: claude-sonnet-4-6
-max_tokens: 2048
+max_tokens: 4096
 version: 1
 expected_schema:
   type: object
@@ -43,4 +43,5 @@ Rules:
 5. Do NOT hallucinate event_ids — only use IDs that appear in the input JSON.
 6. Do NOT emit a signal if the risk is already captured in `existing_risk_descriptions`.
 7. Only emit signals with confidence ≥ 0.6 — low-confidence hunches are noise.
-8. Return only valid JSON. No markdown fences, no explanatory text.
+8. Emit at most 3 signals — prioritize by severity and confidence.
+9. Return only valid JSON. No markdown fences, no explanatory text.

@@ -1,12 +1,14 @@
 # PRD — Project Agent
 
-> Version: v0.5
+> Version: v1.0
 > A git-versioned, AI-augmented project operating system.
 > Living project records, machine-readable, signal-first.
 >
 > **v0.4 changes:** MVP scope trimmed; idempotence contract reworked around source-hash + LLM response cache; `project.md` split into bot-owned canonical + PM-owned notes; Event schema gains `schema_version`, `run_id`, `retracted`, `supersedes`, structured `actor`, discriminated `payload`; operations log added as a first-class artifact; stage 3 renamed Warehouse Load; Phase 0.5 introduced for HTML + MCP slice-out; `velocity_anomaly` and `scope_churn` deferred to Phase 4. See `REVIEW_NOTES.md` for the full review and what was deferred.
 >
 > **v0.5 changes:** Phase 0.5 complete. HTML rendering ships — single-project status dashboard + portfolio cross-project dashboard using inlined design system CSS. MCP ingest live (Gmail/Drive/Calendar via `google-api-python-client`). `pipeline portfolio` command added — runs all projects, one PR. `PortfolioProject` model extended. `_BASE_CSS` constant removed.
+>
+> **v1.0 changes:** Phase 1 complete. Four new deterministic signals: `risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity`. Three LLM signals: `risk_escalation`, `risk_emergent`, `tone_shift` (`signals/llm.py`; three new prompts). Per-project per-day cost cap (`config/signals.yaml`) — zero-budget is a silent opt-out; actual exceedance emits `pipeline_health` event and skips remaining detectors. `llm.extract_with_cost()` added. Three new warehouse views: `risks`, `decisions`, `milestones`. Two new payload types: `MilestoneAddedPayload`, `PipelineHealthPayload`. `run_parse()` now emits `risk_added`, `decision_made`, `milestone_added`. PR 5 (scheduled operation) deferred.
 
 ---
 
@@ -535,7 +537,7 @@ Each stage is one function in `pipeline/stages.py` that imports primitives from 
 - ✅ 30-day history backfill — 17 synthetic source files spanning 2026-04-10 to 2026-05-14 for `demo--sample-2026`.
 - ✅ Portfolio PR shape — decided and implemented as **portfolio-scoped**: `pipeline portfolio` runs all projects, renders portfolio HTML, opens one PR. `pipeline run --project <id>` retained for single-project dev use.
 
-### Phase 1 — LLM Signals + Scheduled Operation *(in progress)*
+### Phase 1 — LLM Signals + Scheduled Operation *(complete — PR 5 deferred)*
 
 **PR 1 — Schema + Parse extensions ✅:**
 - ✅ `MilestoneAddedPayload`, `PipelineHealthPayload` added to `schemas.py`.
@@ -548,7 +550,7 @@ Each stage is one function in `pipeline/stages.py` that imports primitives from 
 - ✅ PR 2: `risks`, `decisions`, `milestones` warehouse views (+ `_full` variants). All filter retracted/superseded; all expose `event_id` for evidence linking.
 - ✅ PR 3: `risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity` deterministic signals. `run_analyze()` accepts optional `project_dir` for stakeholder watchlist from project.md front-matter. Schema JSON files added in `data/schemas/signals/`.
 - ✅ PR 4: `risk_escalation`, `risk_emergent`, `tone_shift` LLM signals + per-project per-day cost cap (skip LLM on breach, emit `pipeline_health`). `signals/llm.py`, `llm.extract_with_cost()`, `config/signals.yaml`, 3 prompt files. `run_analyze()` extended with `cache_dir`, `prompts_dir`, `model`, `config_dir`, `llm_client` params.
-- 🔲 PR 5 (deferred): Schedule daily run via Windows Task Scheduler. Threat model: OAuth tokens local only, stdout/stderr to `logs/`.
+- 🔲 PR 5 (deferred): Schedule daily run via Windows Task Scheduler. Threat model: OAuth tokens local only, stdout/stderr to `logs/`. Gating on LLM signal stability across ≥ 5 consecutive days.
 
 ### Phase 2 — Portfolio Signals
 - `pipeline portfolio` already ships in Phase 0.5 — multi-project CLI, portfolio HTML dashboard.
@@ -635,4 +637,4 @@ Each stage (§8) is its own PR. No stage is "done" until idempotence is verified
 
 ---
 
-*End of PRD v0.5.*
+*End of PRD v1.0.*

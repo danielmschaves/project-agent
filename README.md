@@ -57,7 +57,7 @@ The pipeline runs in six idempotent stages:
 1. Ingest         → file drops + MCP (Gmail/Drive/Calendar) → manifest.json
 2. Parse          → LLM extraction (cached) → events.ndjson + project.md
 3. Warehouse Load → events.ndjson → DuckDB views
-4. Analyze        → SQL signal detectors → signal_detected events
+4. Analyze        → SQL + LLM signal detectors → signal_detected events
 5. Render         → project.md + signals → reports/status-<date>.md + status-<date>.html
 6. Commit         → auto/<date> branch → GitHub PR (PM reviews + merges)
 
@@ -81,7 +81,7 @@ Visual references (open locally):
 
 ## Current Phase
 
-**Phase 0.5 — Complete.** MCP ingest, portfolio PR shape, and HTML v2 design system rendering are all shipped. Phase 1 (LLM signals) is next. See `CLAUDE.md` for the full phase status and what is out of scope.
+**Phase 1 — Complete.** All 10 signals shipped: 7 deterministic (`action_aging`, `action_unowned`, `blocker_unowned`, `risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity`) + 3 LLM (`risk_escalation`, `risk_emergent`, `tone_shift`). Per-project LLM cost cap enforced. Phase 2 (portfolio signals) is next. See `CLAUDE.md` for the full phase status and what is out of scope.
 
 ## Project Layout
 

@@ -1,7 +1,7 @@
 ---
 purpose: Detect sentiment or escalation shifts in recent stakeholder communications
 model: claude-sonnet-4-6
-max_tokens: 2048
+max_tokens: 4096
 version: 1
 expected_schema:
   type: object
@@ -42,4 +42,5 @@ Rules:
 5. Do NOT hallucinate event_ids — only use IDs that appear in the input JSON.
 6. Only emit signals with confidence ≥ 0.6.
 7. A single neutral or slightly negative message is not a tone shift — look for patterns or sharp changes.
-8. Return only valid JSON. No markdown fences, no explanatory text.
+8. Emit at most 2 signals — tone shifts compound; pick the most significant pattern only.
+9. Return only valid JSON. No markdown fences, no explanatory text.
