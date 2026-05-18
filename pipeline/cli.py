@@ -139,7 +139,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     # Stage 4 — Analyze
     r4, signals = _step("analyze", stages.run_analyze(
-        project_id, db_path, events_path, run_id, schemas_dir
+        project_id, db_path, events_path, run_id, schemas_dir,
+        project_dir=project_dir,
+        cache_dir=cache_dir,
+        prompts_dir=prompts_dir,
+        model=args.model,
     ))
     signals = signals or []
 
@@ -248,7 +252,11 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
         ))
         r3, _ = _step("warehouse", stages.run_warehouse(events_path, db_path, run_id))
         r4, signals = _step("analyze", stages.run_analyze(
-            project_id, db_path, events_path, run_id, schemas_dir
+            project_id, db_path, events_path, run_id, schemas_dir,
+            project_dir=project_dir,
+            cache_dir=cache_dir,
+            prompts_dir=prompts_dir,
+            model=args.model,
         ))
         signals = signals or []
 

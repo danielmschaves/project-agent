@@ -21,6 +21,7 @@ from project_agent.schemas import (
     Event,
     LLMActor,
     MilestoneAddedPayload,
+    PipelineHealthPayload,
     RiskAddedPayload,
     RunLog,
     Signal,
@@ -29,6 +30,7 @@ from project_agent.schemas import (
     StageResult,
 )
 from project_agent.signals import deterministic
+from project_agent.signals import llm as llm_signals
 
 logger = logging.getLogger(__name__)
 
@@ -378,16 +380,66 @@ def _load_signal_thresholds(schemas_dir: Path) -> dict[str, dict[str, object]]:
         "blocker_aging",
         "deliverable_drift",
         "stakeholder_inactivity",
+        "risk_escalation",
+        "risk_emergent",
+        "tone_shift",
     ):
         path = schemas_dir / f"{name}.json"
         result[name] = dict(json.loads(path.read_text(encoding="utf-8"))) if path.exists() else {}
     return result
 
 
+def _load_llm_budget(config_dir: Path) -> float:
+    """Load per-project-per-day LLM cost cap from config/signals.yaml. Default: 0.50 USD."""
+    yaml_path = config_dir / "signals.yaml"
+    if not yaml_path.exists():
+        return 0.50
+    try:
+        import yaml  # available as transitive dep via python-frontmatter
+        cfg = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+        return float(cfg.get("llm_cost_cap_usd_per_project_per_day", 0.50))
+    except Exception:
+        logger.warning("Could not load LLM budget config from %s — defaulting to $0.50", yaml_path)
+        return 0.50
+
+
 def _signal_source_hash(signal_type: str, evidence: list[str]) -> str:
     """Stable hash encoding signal type + evidence; used as the dedup key."""
     content = f"{signal_type}:{','.join(sorted(evidence))}"
     return "sha256:" + hashlib.sha256(content.encode()).hexdigest()
+
+
+def _emit_pipeline_health(
+    events_path: Path,
+    project_id: str,
+    run_id: str,
+    category: str,
+    message: str,
+    detail: str | None = None,
+) -> None:
+    """Append a pipeline_health event to the event log."""
+    payload = PipelineHealthPayload(
+        type="pipeline_health",
+        category=category,
+        message=message,
+        detail=detail,
+    )
+    source_hash = "sha256:" + hashlib.sha256(
+        f"{category}:{run_id}".encode()
+    ).hexdigest()
+    event = Event(
+        event_id=str(uuid.uuid4()),
+        ts=datetime.now(tz=timezone.utc),
+        run_id=run_id,
+        project_id=project_id,
+        type="pipeline_health",
+        actor=DeterministicActor(kind="deterministic", detector="pipeline"),
+        source_ref="derived/pipeline",
+        source_hash=source_hash,
+        payload=payload,
+        hash=events_api.hash_event(payload.model_dump(), source_hash),
+    )
+    events_api.append(event, events_path)
 
 
 def run_analyze(
@@ -397,19 +449,36 @@ def run_analyze(
     run_id: str,
     schemas_dir: Path | None = None,
     project_dir: Path | None = None,
+    cache_dir: Path | None = None,
+    prompts_dir: Path | None = None,
+    model: str = "claude-sonnet-4-6",
+    config_dir: Path | None = None,
+    llm_client: Any = None,
 ) -> tuple[StageResult, list[Signal]]:
-    """Stage 4 — deterministic signal detection (PRD §8.4, MVP).
+    """Stage 4 — deterministic + LLM signal detection (PRD §8.4, Phase 1).
+
+    Runs deterministic detectors first, then LLM detectors up to the
+    per-project-per-day cost cap from config/signals.yaml.  When the cap is
+    hit the stage emits a pipeline_health event and continues to render with
+    deterministic signals only.
 
     Returns (StageResult, signals) so the render stage can consume signals
     without re-reading the events log.
     """
     if schemas_dir is None:
         schemas_dir = Path("data/schemas/signals")
+    if cache_dir is None:
+        cache_dir = Path("data/cache/llm")
+    if prompts_dir is None:
+        prompts_dir = Path("prompts")
+    if config_dir is None:
+        config_dir = Path("config")
 
     start = time.monotonic()
     signals_new = 0
     signals_skipped = 0
     errors = 0
+    llm_cost_spent = 0.0
     emitted: list[Signal] = []
 
     try:
@@ -490,6 +559,75 @@ def run_analyze(
             emitted.append(signal)
             signals_new += 1
 
+        # -------------------------------------------------------------------
+        # LLM signals — runs after deterministic, subject to per-project cost cap
+        # -------------------------------------------------------------------
+        budget_usd = _load_llm_budget(config_dir)
+        budget_exhausted = False
+
+        for llm_fn, llm_key in [
+            (llm_signals.detect_risk_escalation, "risk_escalation"),
+            (llm_signals.detect_risk_emergent, "risk_emergent"),
+            (llm_signals.detect_tone_shift, "tone_shift"),
+        ]:
+            if llm_cost_spent >= budget_usd:
+                if not budget_exhausted:
+                    _emit_pipeline_health(
+                        events_path, project_id, run_id,
+                        "llm_budget_exceeded",
+                        f"LLM cost cap ${budget_usd:.2f} reached after ${llm_cost_spent:.4f} spent.",
+                    )
+                    budget_exhausted = True
+                    logger.warning(
+                        "LLM cost cap reached (%.4f >= %.2f) — skipping remaining LLM detectors",
+                        llm_cost_spent, budget_usd,
+                    )
+                break
+            try:
+                llm_sigs, cost = llm_fn(
+                    db_path, project_id, run_id,
+                    thresholds.get(llm_key, {}),
+                    cache_dir, prompts_dir, model, llm_client,
+                )
+                llm_cost_spent += cost
+                for signal in llm_sigs:
+                    source_hash = _signal_source_hash(signal.type, signal.evidence)
+                    if source_hash in seen_source_hashes:
+                        signals_skipped += 1
+                        continue
+                    payload = SignalDetectedPayload(
+                        type="signal_detected",
+                        signal_id=signal.signal_id,
+                        signal_type=signal.type,
+                        category=signal.category,
+                        severity=signal.severity,
+                        confidence=signal.confidence,
+                        evidence=signal.evidence,
+                        method=signal.method,
+                        rationale=signal.rationale,
+                        recommended_action=signal.recommended_action,
+                    )
+                    event = Event(
+                        event_id=str(uuid.uuid4()),
+                        ts=datetime.now(tz=timezone.utc),
+                        run_id=run_id,
+                        project_id=project_id,
+                        type="signal_detected",
+                        actor=LLMActor(kind="llm", model=model, prompt=llm_key),
+                        source_ref="derived/signals",
+                        source_hash=source_hash,
+                        payload=payload,
+                        hash=events_api.hash_event(payload.model_dump(), source_hash),
+                        confidence=signal.confidence,
+                    )
+                    events_api.append(event, events_path)
+                    seen_source_hashes.add(source_hash)
+                    emitted.append(signal)
+                    signals_new += 1
+            except Exception:
+                logger.exception("LLM detector %s failed", llm_key)
+                errors += 1
+
     except Exception:
         logger.exception("Analyze stage failed")
         elapsed = int((time.monotonic() - start) * 1000)
@@ -511,6 +649,7 @@ def run_analyze(
         status="ok",
         duration_ms=elapsed,
         counts={"signals_new": signals_new, "signals_skipped": signals_skipped, "errors": errors},
+        cost_usd=llm_cost_spent if llm_cost_spent > 0 else None,
     ), emitted
 
 
