@@ -300,6 +300,18 @@ def _count_nonempty_lines(text: str) -> int:
     return sum(1 for line in text.splitlines() if line.strip())
 
 
+def _method_tag_html(method: str) -> str:
+    if method == "llm":
+        return (
+            '<span style="margin-left:auto;font-size:10px;letter-spacing:0.08em;'
+            'color:var(--violet);font-weight:600;font-family:var(--font-mono)">LLM</span>'
+        )
+    return (
+        '<span style="margin-left:auto;font-size:10px;letter-spacing:0.08em;'
+        'color:var(--sky);font-weight:600;font-family:var(--font-mono)">DET</span>'
+    )
+
+
 def _signal_cards_html(signals: list[Signal]) -> str:
     if not signals:
         return '<p class="text-muted">No signals detected.</p>'
@@ -315,17 +327,23 @@ def _signal_cards_html(signals: list[Signal]) -> str:
             f"</p>"
         )
         for s in cat_signals:
+            conf_html = (
+                f' &middot; <span title="confidence">{s.confidence:.0%}</span>'
+                if s.method == "llm"
+                else ""
+            )
             parts.append(
                 f'<div class="signal-card">'
                 f'<div class="signal-head">'
                 f"{_severity_badge_html(s.severity)}"
-                f'<span class="signal-category">{_esc(s.category)} · {_esc(s.type)}</span>'
+                f'<span class="signal-category">{_esc(s.category)}</span>'
+                f"{_method_tag_html(s.method)}"
                 f"</div>"
                 f'<h4 class="signal-title">{_esc(s.type)}</h4>'
                 f'<p class="signal-rationale">{_esc(s.rationale)}</p>'
                 f'<div class="signal-foot">'
                 f'<span class="signal-evidence">'
-                f"{len(s.evidence)} event(s) · {_esc(s.method)}"
+                f"{len(s.evidence)} event(s){conf_html}"
                 f"</span>"
                 f'<span class="signal-action">{_esc(s.recommended_action)}</span>'
                 f"</div>"

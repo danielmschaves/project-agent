@@ -12,6 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 >
 > **v1.0 (Phase 1, PR 1):** Schema + Parse extensions. `run_parse()` now emits `risk_added`, `decision_made`, and `milestone_added` events from extracted source content. `extract-context.md` bumped to v2 (adds `milestones` extraction — triggers cache miss on all prior sources, re-parsing them under the new prompt). `SourceIngestedPayload` gains optional `sender` field (populated from `From:` header for email sources; used by the upcoming `stakeholder_inactivity` signal). Two new payload types: `MilestoneAddedPayload`, `PipelineHealthPayload`. `projects.update_project()` now renders `Risks`, `Decisions`, and `Milestones` sections in `project.md`.
 > **v1.1 (Phase 1, PR 3):** New deterministic signals. Four detectors added: `risk_unaddressed` (open risk > stale_days), `blocker_aging` (blocker open > aging_days), `deliverable_drift` (milestone due within near_days with non-done status), `stakeholder_inactivity` (stakeholder email gap > cadence_days — requires prior email history as evidence anchor). `run_analyze()` now accepts optional `project_dir` to load stakeholder watchlist from `project.md` front-matter. `_load_signal_thresholds()` extended for all 7 signal types. Schema JSON files added in `data/schemas/signals/`.
+> **v1.2 (Phase 1, PR 4):** LLM signals + cost cap. Three LLM detectors added in `signals/llm.py`: `risk_escalation` (existing risks worsening based on recent activity), `risk_emergent` (new risks not yet captured), `tone_shift` (sentiment shift in stakeholder communications). `run_analyze()` now accepts `cache_dir`, `prompts_dir`, `model`, `config_dir`, `llm_client` parameters. LLM signals run after deterministic; when the per-project-per-day budget (`config/signals.yaml`) is hit, a `pipeline_health` event is emitted and remaining LLM detectors are skipped. `llm.extract_with_cost()` added — returns `(dict, cost_usd)` with 0.0 on cache hit. Three new prompt files: `detect-risk-escalation.md`, `detect-risk-emergent.md`, `detect-tone-shift.md` (all v1).
 
 ---
 
@@ -182,7 +183,7 @@ Phase 0.5 is **complete** — MCP ingest, 30-day corpus, HTML rendering v2, and 
 - ✅ PR 1: Schema + Parse extensions (`MilestoneAddedPayload`, `PipelineHealthPayload`, `sender` on `SourceIngestedPayload`; `run_parse()` emits `risk_added`/`decision_made`/`milestone_added`; `extract-context.md` v2)
 - ✅ PR 2: Warehouse Phase 1 views — `risks`, `decisions`, `milestones` views (+ `_full` variants). All expose `event_id` for evidence linking. All filter `retracted=false AND superseded_by IS NULL` by default.
 - ✅ PR 3: New deterministic signals (`risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity`). `run_analyze()` gains optional `project_dir` for stakeholder watchlist loading from project.md front-matter.
-- 🔲 PR 4: LLM signals + cost cap (`signals/llm.py`; 3 prompts; `config/signals.yaml`)
+- ✅ PR 4: LLM signals + cost cap (`signals/llm.py`; 3 prompts; `config/signals.yaml`; `llm.extract_with_cost()`)
 - 🔲 PR 5: Scheduled operation (deferred — after LLM signals are stable)
 
 **Out of scope until later phases:**
