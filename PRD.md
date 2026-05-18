@@ -545,7 +545,7 @@ Each stage is one function in `pipeline/stages.py` that imports primitives from 
 - ✅ `projects.update_project()` renders `Risks`, `Decisions`, `Milestones` sections in `project.md`.
 
 **Remaining:**
-- 🔲 PR 2: `risks`, `decisions`, `milestones` warehouse views (+ `_full` variants).
+- ✅ PR 2: `risks`, `decisions`, `milestones` warehouse views (+ `_full` variants). All filter retracted/superseded; all expose `event_id` for evidence linking.
 - 🔲 PR 3: `risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity` deterministic signals.
 - 🔲 PR 4: `risk_escalation`, `risk_emergent`, `tone_shift` LLM signals + per-project per-day cost cap (skip LLM on breach, emit `pipeline_health`). Config: `config/signals.yaml`.
 - 🔲 PR 5 (deferred): Schedule daily run via Windows Task Scheduler. Threat model: OAuth tokens local only, stdout/stderr to `logs/`.

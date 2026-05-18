@@ -9,9 +9,12 @@ from project_agent import events as events_api, warehouse
 from project_agent.schemas import (
     ActionAddedPayload,
     BlockerAddedPayload,
+    DecisionMadePayload,
     DeterministicActor,
     Event,
     LLMActor,
+    MilestoneAddedPayload,
+    RiskAddedPayload,
     SourceIngestedPayload,
 )
 from pipeline.stages import run_warehouse
@@ -122,6 +125,100 @@ def _blocker_event(
     )
 
 
+def _risk_event(
+    description: str = "Scope creep",
+    severity: str = "high",
+    owner: str | None = "alice",
+    status: str = "open",
+    source_hash: str = "sha256:rrr",
+    retracted: bool = False,
+    superseded_by: str | None = None,
+) -> Event:
+    payload = RiskAddedPayload(
+        type="risk_added",
+        description=description,
+        severity=severity,  # type: ignore[arg-type]
+        owner=owner,
+        status=status,
+    )
+    return Event(
+        event_id=str(uuid.uuid4()),
+        ts=datetime.now(tz=timezone.utc),
+        run_id="run-001",
+        project_id="test--project",
+        type="risk_added",
+        actor=_llm_actor(),
+        source_ref="sources/docs/doc.md",
+        source_hash=source_hash,
+        payload=payload,
+        hash=events_api.hash_event(payload.model_dump(), source_hash),
+        retracted=retracted,
+        superseded_by=superseded_by,
+    )
+
+
+def _decision_event(
+    description: str = "Use PostgreSQL",
+    rationale: str | None = "Team familiarity",
+    decided_by: str | None = "alice",
+    source_hash: str = "sha256:ddd",
+    retracted: bool = False,
+    superseded_by: str | None = None,
+) -> Event:
+    payload = DecisionMadePayload(
+        type="decision_made",
+        description=description,
+        rationale=rationale,
+        decided_by=decided_by,
+    )
+    return Event(
+        event_id=str(uuid.uuid4()),
+        ts=datetime.now(tz=timezone.utc),
+        run_id="run-001",
+        project_id="test--project",
+        type="decision_made",
+        actor=_llm_actor(),
+        source_ref="sources/docs/doc.md",
+        source_hash=source_hash,
+        payload=payload,
+        hash=events_api.hash_event(payload.model_dump(), source_hash),
+        retracted=retracted,
+        superseded_by=superseded_by,
+    )
+
+
+def _milestone_event(
+    description: str = "MVP launch",
+    target_date: str | None = "2026-07-01",
+    status: str = "open",
+    owner: str | None = "bob",
+    source_hash: str = "sha256:mmm",
+    retracted: bool = False,
+    superseded_by: str | None = None,
+) -> Event:
+    payload = MilestoneAddedPayload(
+        type="milestone_added",
+        description=description,
+        target_date=target_date,
+        status=status,
+        owner=owner,
+    )
+    return Event(
+        event_id=str(uuid.uuid4()),
+        ts=datetime.now(tz=timezone.utc),
+        run_id="run-001",
+        project_id="test--project",
+        type="milestone_added",
+        actor=_llm_actor(),
+        source_ref="sources/docs/doc.md",
+        source_hash=source_hash,
+        payload=payload,
+        hash=events_api.hash_event(payload.model_dump(), source_hash),
+        retracted=retracted,
+        superseded_by=superseded_by,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Unit tests — view filter behaviour
 # ---------------------------------------------------------------------------
@@ -195,17 +292,61 @@ def test_blockers_view_excludes_retracted(events_path: Path, db_path: Path) -> N
 
 
 @pytest.mark.unit
+def test_risks_view_excludes_retracted(events_path: Path, db_path: Path) -> None:
+    events_api.append(_risk_event(source_hash="sha256:r1"), events_path)
+    events_api.append(_risk_event(source_hash="sha256:r2", retracted=True), events_path)
+
+    warehouse.load(events_path, db_path)
+
+    rows = warehouse.query(db_path, "SELECT * FROM risks")
+    assert len(rows) == 1
+
+
+@pytest.mark.unit
+def test_decisions_view_excludes_retracted(events_path: Path, db_path: Path) -> None:
+    events_api.append(_decision_event(source_hash="sha256:d1"), events_path)
+    events_api.append(_decision_event(source_hash="sha256:d2", retracted=True), events_path)
+
+    warehouse.load(events_path, db_path)
+
+    rows = warehouse.query(db_path, "SELECT * FROM decisions")
+    assert len(rows) == 1
+
+
+@pytest.mark.unit
+def test_milestones_view_excludes_retracted(events_path: Path, db_path: Path) -> None:
+    events_api.append(_milestone_event(source_hash="sha256:m1"), events_path)
+    events_api.append(_milestone_event(source_hash="sha256:m2", retracted=True), events_path)
+
+    warehouse.load(events_path, db_path)
+
+    rows = warehouse.query(db_path, "SELECT * FROM milestones")
+    assert len(rows) == 1
+
+
+@pytest.mark.unit
 def test_all_views_expose_event_id(events_path: Path, db_path: Path) -> None:
     events_api.append(_source_event("sha256:src"), events_path)
     events_api.append(_action_event(source_hash="sha256:act"), events_path)
     events_api.append(_blocker_event(source_hash="sha256:blk"), events_path)
+    events_api.append(_risk_event(source_hash="sha256:rsk"), events_path)
+    events_api.append(_decision_event(source_hash="sha256:dec"), events_path)
+    events_api.append(_milestone_event(source_hash="sha256:mls"), events_path)
 
     warehouse.load(events_path, db_path)
 
-    for view in ("events", "events_full", "actions", "actions_full", "blockers", "blockers_full"):
+    all_views = (
+        "events", "events_full",
+        "actions", "actions_full",
+        "blockers", "blockers_full",
+        "risks", "risks_full",
+        "decisions", "decisions_full",
+        "milestones", "milestones_full",
+    )
+    for view in all_views:
         rows = warehouse.query(db_path, f"SELECT * FROM {view}")
         for row in rows:
-            assert "event_id" in row
+            assert "event_id" in row, f"event_id missing from {view}"
             assert row["event_id"] is not None
 
 
@@ -249,6 +390,53 @@ def test_load_populates_blockers_view_columns(events_path: Path, db_path: Path) 
     assert len(rows) == 1
     assert rows[0]["description"] == "No prod access"
     assert rows[0]["owner"] == "bob"
+
+
+@pytest.mark.integration
+def test_load_populates_risks_view_columns(events_path: Path, db_path: Path) -> None:
+    events_api.append(
+        _risk_event(description="Vendor delay", severity="high", owner="alice", status="open"),
+        events_path,
+    )
+    warehouse.load(events_path, db_path)
+
+    rows = warehouse.query(db_path, "SELECT * FROM risks")
+    assert len(rows) == 1
+    assert rows[0]["description"] == "Vendor delay"
+    assert rows[0]["severity"] == "high"
+    assert rows[0]["owner"] == "alice"
+    assert rows[0]["status"] == "open"
+
+
+@pytest.mark.integration
+def test_load_populates_decisions_view_columns(events_path: Path, db_path: Path) -> None:
+    events_api.append(
+        _decision_event(description="Use Redis", rationale="Speed", decided_by="bob"),
+        events_path,
+    )
+    warehouse.load(events_path, db_path)
+
+    rows = warehouse.query(db_path, "SELECT * FROM decisions")
+    assert len(rows) == 1
+    assert rows[0]["description"] == "Use Redis"
+    assert rows[0]["rationale"] == "Speed"
+    assert rows[0]["decided_by"] == "bob"
+
+
+@pytest.mark.integration
+def test_load_populates_milestones_view_columns(events_path: Path, db_path: Path) -> None:
+    events_api.append(
+        _milestone_event(description="Beta release", target_date="2026-09-01", status="open", owner="carol"),
+        events_path,
+    )
+    warehouse.load(events_path, db_path)
+
+    rows = warehouse.query(db_path, "SELECT * FROM milestones")
+    assert len(rows) == 1
+    assert rows[0]["description"] == "Beta release"
+    assert rows[0]["target_date"] == "2026-09-01"
+    assert rows[0]["status"] == "open"
+    assert rows[0]["owner"] == "carol"
 
 
 @pytest.mark.integration
