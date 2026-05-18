@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > **v0.5 changes:** Phase 0.5 complete. HTML rendering ships — both single-project status dashboard and portfolio cross-project dashboard. MCP ingest live (Gmail/Drive/Calendar). `pipeline portfolio` command added. `_BASE_CSS` dropped; design system CSS inlined from `design-system/`. `PortfolioProject` model extended with `client_id`, `sponsor`, `phase`, `last_source_ts`, `events_count`.
 >
 > **v1.0 (Phase 1, PR 1):** Schema + Parse extensions. `run_parse()` now emits `risk_added`, `decision_made`, and `milestone_added` events from extracted source content. `extract-context.md` bumped to v2 (adds `milestones` extraction — triggers cache miss on all prior sources, re-parsing them under the new prompt). `SourceIngestedPayload` gains optional `sender` field (populated from `From:` header for email sources; used by the upcoming `stakeholder_inactivity` signal). Two new payload types: `MilestoneAddedPayload`, `PipelineHealthPayload`. `projects.update_project()` now renders `Risks`, `Decisions`, and `Milestones` sections in `project.md`.
+> **v1.1 (Phase 1, PR 3):** New deterministic signals. Four detectors added: `risk_unaddressed` (open risk > stale_days), `blocker_aging` (blocker open > aging_days), `deliverable_drift` (milestone due within near_days with non-done status), `stakeholder_inactivity` (stakeholder email gap > cadence_days — requires prior email history as evidence anchor). `run_analyze()` now accepts optional `project_dir` to load stakeholder watchlist from `project.md` front-matter. `_load_signal_thresholds()` extended for all 7 signal types. Schema JSON files added in `data/schemas/signals/`.
 
 ---
 
@@ -180,7 +181,7 @@ Phase 0.5 is **complete** — MCP ingest, 30-day corpus, HTML rendering v2, and 
 **Phase 1 — in progress (sequenced as 4 PRs):**
 - ✅ PR 1: Schema + Parse extensions (`MilestoneAddedPayload`, `PipelineHealthPayload`, `sender` on `SourceIngestedPayload`; `run_parse()` emits `risk_added`/`decision_made`/`milestone_added`; `extract-context.md` v2)
 - ✅ PR 2: Warehouse Phase 1 views — `risks`, `decisions`, `milestones` views (+ `_full` variants). All expose `event_id` for evidence linking. All filter `retracted=false AND superseded_by IS NULL` by default.
-- 🔲 PR 3: New deterministic signals (`risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity`)
+- ✅ PR 3: New deterministic signals (`risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity`). `run_analyze()` gains optional `project_dir` for stakeholder watchlist loading from project.md front-matter.
 - 🔲 PR 4: LLM signals + cost cap (`signals/llm.py`; 3 prompts; `config/signals.yaml`)
 - 🔲 PR 5: Scheduled operation (deferred — after LLM signals are stable)
 
