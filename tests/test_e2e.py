@@ -118,10 +118,23 @@ def _run_full_pipeline(
 ) -> tuple[list, list[Signal]]:
     prompts_dir = Path("prompts")
 
+    # Zero-budget config so LLM detectors are skipped in E2E tests — determinism
+    # is required here; LLM signal quality is covered by test_signals_llm.py.
+    config_dir = project_dir.parent / "config"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "signals.yaml").write_text(
+        "llm_cost_cap_usd_per_project_per_day: 0.0\n", encoding="utf-8"
+    )
+
     stages.run_ingest("demo--sample-2026", project_dir, events_path, run_id)
     stages.run_parse("demo--sample-2026", project_dir, events_path, cache_dir, prompts_dir, run_id, client=fake_client)
     stages.run_warehouse(events_path, db_path, run_id)
-    _, signals = stages.run_analyze("demo--sample-2026", db_path, events_path, run_id, schemas_dir)
+    _, signals = stages.run_analyze(
+        "demo--sample-2026", db_path, events_path, run_id, schemas_dir,
+        cache_dir=cache_dir,
+        prompts_dir=prompts_dir,
+        config_dir=config_dir,
+    )
     stages.run_render("demo--sample-2026", project_dir, signals or [], run_id)
 
     return stages, signals or []

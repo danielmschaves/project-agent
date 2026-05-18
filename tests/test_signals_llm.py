@@ -441,30 +441,33 @@ def test_budget_exceeded_emits_pipeline_health_event(
     events_path: Path, db_path: Path, schemas_dir: Path,
     prompts_dir: Path, cache_dir: Path, tmp_path: Path,
 ) -> None:
-    # Set budget to effectively zero — any LLM call will exceed it
-    zero_budget_dir = tmp_path / "config_zero"
-    zero_budget_dir.mkdir()
-    (zero_budget_dir / "signals.yaml").write_text(
-        "llm_cost_cap_usd_per_project_per_day: 0.0\n", encoding="utf-8"
+    # Budget lower than the cost of one fake API call (~0.00105 USD).
+    # The first LLM detector runs and spends that cost; before the second
+    # detector fires, the budget check triggers and emits pipeline_health.
+    low_budget_dir = tmp_path / "config_low"
+    low_budget_dir.mkdir()
+    (low_budget_dir / "signals.yaml").write_text(
+        "llm_cost_cap_usd_per_project_per_day: 0.001\n", encoding="utf-8"
     )
 
     risk = _risk_event()
+    recent_src = _source_event(ts=datetime.now(tz=timezone.utc) - timedelta(days=2))
     events_api.append(risk, events_path)
+    events_api.append(recent_src, events_path)
     _load_db(events_path, db_path)
 
-    # Client response would succeed if called — but budget=0 should prevent any call
     llm_response = json.dumps({"signals": []})
     client = _FakeClient(llm_response)
 
     result, signals = run_analyze(
         "test--project", db_path, events_path, "run-001", schemas_dir,
-        cache_dir=cache_dir, prompts_dir=prompts_dir, config_dir=zero_budget_dir, llm_client=client,
+        cache_dir=cache_dir, prompts_dir=prompts_dir, config_dir=low_budget_dir, llm_client=client,
     )
 
     assert result.status == "ok"
-    # No LLM calls made (budget=0 blocks before first detector)
-    assert client.call_count == 0
-    # pipeline_health event emitted
+    # First detector made exactly one API call before budget was exceeded
+    assert client.call_count == 1
+    # pipeline_health event emitted (cost > 0 triggered the guard)
     ph_events = events_api.query(events_path, project_id="test--project", types=["pipeline_health"])
     assert len(ph_events) == 1
     from project_agent.schemas import PipelineHealthPayload
@@ -473,10 +476,11 @@ def test_budget_exceeded_emits_pipeline_health_event(
 
 
 @pytest.mark.integration
-def test_budget_exceeded_llm_signals_absent_from_output(
+def test_budget_zero_silently_skips_llm_signals(
     events_path: Path, db_path: Path, schemas_dir: Path,
     prompts_dir: Path, cache_dir: Path, tmp_path: Path,
 ) -> None:
+    # budget=0.0 is a deliberate opt-out — no API calls, no pipeline_health event.
     zero_budget_dir = tmp_path / "config_zero"
     zero_budget_dir.mkdir()
     (zero_budget_dir / "signals.yaml").write_text(
@@ -487,10 +491,15 @@ def test_budget_exceeded_llm_signals_absent_from_output(
     events_api.append(risk, events_path)
     _load_db(events_path, db_path)
 
+    client = _FakeClient(json.dumps({"signals": []}))
     _, signals = run_analyze(
         "test--project", db_path, events_path, "run-001", schemas_dir,
-        cache_dir=cache_dir, prompts_dir=prompts_dir, config_dir=zero_budget_dir,
+        cache_dir=cache_dir, prompts_dir=prompts_dir, config_dir=zero_budget_dir, llm_client=client,
     )
 
+    # No API calls and no pipeline_health — zero budget is opt-out, not exhaustion
+    assert client.call_count == 0
+    ph_events = events_api.query(events_path, project_id="test--project", types=["pipeline_health"])
+    assert ph_events == []
     llm_sigs = [s for s in signals if s.method == "llm"]
     assert llm_sigs == []

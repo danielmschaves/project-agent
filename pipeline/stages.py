@@ -425,7 +425,7 @@ def _emit_pipeline_health(
         detail=detail,
     )
     source_hash = "sha256:" + hashlib.sha256(
-        f"{category}:{run_id}".encode()
+        f"pipeline_health:{category}:{project_id}".encode()
     ).hexdigest()
     event = Event(
         event_id=str(uuid.uuid4()),
@@ -572,16 +572,19 @@ def run_analyze(
         ]:
             if llm_cost_spent >= budget_usd:
                 if not budget_exhausted:
-                    _emit_pipeline_health(
-                        events_path, project_id, run_id,
-                        "llm_budget_exceeded",
-                        f"LLM cost cap ${budget_usd:.2f} reached after ${llm_cost_spent:.4f} spent.",
-                    )
                     budget_exhausted = True
                     logger.warning(
                         "LLM cost cap reached (%.4f >= %.2f) — skipping remaining LLM detectors",
                         llm_cost_spent, budget_usd,
                     )
+                    # Only emit pipeline_health when real money was spent — a zero-budget
+                    # config is a deliberate opt-out, not a budget-exceeded situation.
+                    if llm_cost_spent > 0:
+                        _emit_pipeline_health(
+                            events_path, project_id, run_id,
+                            "llm_budget_exceeded",
+                            f"LLM cost cap ${budget_usd:.2f} reached after ${llm_cost_spent:.4f} spent.",
+                        )
                 break
             try:
                 llm_sigs, cost = llm_fn(
