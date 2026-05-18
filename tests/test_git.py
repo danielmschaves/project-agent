@@ -148,11 +148,13 @@ def test_run_commit_portfolio_dry_run(
 
 @pytest.mark.integration
 def test_discover_projects(tmp_path: Path) -> None:
+    # Discovery anchors on project.notes.md (PM-owned, always committed),
+    # not project.md (bot-generated, gitignored — absent on fresh clone).
     (tmp_path / "proj-a").mkdir()
-    (tmp_path / "proj-a" / "project.md").write_text("# A")
+    (tmp_path / "proj-a" / "project.notes.md").write_text("# A notes")
     (tmp_path / "proj-b").mkdir()
-    (tmp_path / "proj-b" / "project.md").write_text("# B")
-    (tmp_path / "no-project-md").mkdir()
+    (tmp_path / "proj-b" / "project.notes.md").write_text("# B notes")
+    (tmp_path / "no-notes").mkdir()  # has no project.notes.md — must be excluded
     (tmp_path / "a-file.txt").write_text("not a dir")
 
     found = _discover_projects(tmp_path)

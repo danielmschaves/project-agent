@@ -82,6 +82,32 @@ def test_scan_inbox_sets_correct_metadata(project_dir: Path) -> None:
     assert r.source_hash.startswith("sha256:")
     assert r.source_ref == "sources/docs/notes.txt"
     assert r.is_new is True
+    assert r.sender is None  # non-email sources have no sender
+
+
+@pytest.mark.integration
+def test_scan_inbox_extracts_email_sender(project_dir: Path) -> None:
+    raw_email = b"From: Alice <alice@example.com>\r\nSubject: Update\r\n\r\nHello."
+    _seed_inbox(project_dir, {"update.eml": raw_email})
+
+    results = scan_inbox(project_dir)
+
+    assert len(results) == 1
+    assert results[0].source_type == "email"
+    assert results[0].sender == "Alice <alice@example.com>"
+
+
+@pytest.mark.unit
+def test_ingest_result_sender_defaults_none() -> None:
+    r = IngestResult(
+        filename="doc.md",
+        source_type="doc",
+        size_bytes=10,
+        source_hash="sha256:abc",
+        source_ref="sources/docs/doc.md",
+        is_new=True,
+    )
+    assert r.sender is None
 
 
 @pytest.mark.integration

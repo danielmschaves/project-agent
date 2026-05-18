@@ -2,7 +2,7 @@
 purpose: Extract structured project facts from a source document
 model: claude-sonnet-4-6
 max_tokens: 4096
-version: 1
+version: 2
 expected_schema:
   type: object
   properties:
@@ -34,6 +34,7 @@ expected_schema:
           description: {type: string}
           severity: {enum: [low, medium, high]}
           owner: {type: [string, "null"]}
+          status: {type: string, default: open}
     decisions:
       type: array
       items:
@@ -43,6 +44,16 @@ expected_schema:
           description: {type: string}
           rationale: {type: [string, "null"]}
           decided_by: {type: [string, "null"]}
+    milestones:
+      type: array
+      items:
+        type: object
+        required: [description]
+        properties:
+          description: {type: string}
+          target_date: {type: [string, "null"], description: ISO date e.g. 2026-05-20}
+          status: {type: string, default: open, description: "open | in-progress | done"}
+          owner: {type: [string, "null"]}
 ---
 
 You are a project management assistant. Extract structured facts from the project source document below.
@@ -64,11 +75,18 @@ Return a JSON object with exactly these top-level keys:
   - `description` (string, required)
   - `severity` ("low" | "medium" | "high", required)
   - `owner` (string or null)
+  - `status` (string, default "open")
 
 - `decisions` — list of decisions already made. Each has:
   - `description` (string, required)
   - `rationale` (string or null)
   - `decided_by` (string or null)
+
+- `milestones` — list of project milestones or deliverables. Each has:
+  - `description` (string, required)
+  - `target_date` (ISO date string e.g. "2026-05-20", or null)
+  - `status` (string, default "open"; one of "open" | "in-progress" | "done")
+  - `owner` (string or null)
 
 Rules:
 - Return only valid JSON. No markdown fences, no explanatory text before or after.

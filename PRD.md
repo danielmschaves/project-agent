@@ -535,13 +535,20 @@ Each stage is one function in `pipeline/stages.py` that imports primitives from 
 - ✅ 30-day history backfill — 17 synthetic source files spanning 2026-04-10 to 2026-05-14 for `demo--sample-2026`.
 - ✅ Portfolio PR shape — decided and implemented as **portfolio-scoped**: `pipeline portfolio` runs all projects, renders portfolio HTML, opens one PR. `pipeline run --project <id>` retained for single-project dev use.
 
-### Phase 1 — LLM Signals + Scheduled Operation
-- Activate `risk_escalation`, `risk_emergent`, `tone_shift` LLM signals.
-- Promote `risk_unaddressed`, `deliverable_drift`, `blocker_aging`, `stakeholder_inactivity` deterministic signals as their warehouse tables come online.
-- Add `risks`, `decisions`, `milestones`, `stakeholders` warehouse views.
-- Schedule daily run via local cron / launchd.
-- Define cron-host threat model: where do OAuth tokens live, where does pipeline stdout/stderr go, what's the failure-loud guarantee on auth refresh.
-- Per-project per-day LLM cost cap; operational signal when cap is approached.
+### Phase 1 — LLM Signals + Scheduled Operation *(in progress)*
+
+**PR 1 — Schema + Parse extensions ✅:**
+- ✅ `MilestoneAddedPayload`, `PipelineHealthPayload` added to `schemas.py`.
+- ✅ `SourceIngestedPayload.sender` — optional `From:` header for email sources; used by `stakeholder_inactivity`.
+- ✅ `extract-context.md` v2 — extracts `milestones` in addition to actions/blockers/risks/decisions (v1→v2 triggers cache miss on all prior sources).
+- ✅ `run_parse()` emits `risk_added`, `decision_made`, `milestone_added` events (were extracted but silently dropped in Phase 0.5).
+- ✅ `projects.update_project()` renders `Risks`, `Decisions`, `Milestones` sections in `project.md`.
+
+**Remaining:**
+- 🔲 PR 2: `risks`, `decisions`, `milestones` warehouse views (+ `_full` variants).
+- 🔲 PR 3: `risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity` deterministic signals.
+- 🔲 PR 4: `risk_escalation`, `risk_emergent`, `tone_shift` LLM signals + per-project per-day cost cap (skip LLM on breach, emit `pipeline_health`). Config: `config/signals.yaml`.
+- 🔲 PR 5 (deferred): Schedule daily run via Windows Task Scheduler. Threat model: OAuth tokens local only, stdout/stderr to `logs/`.
 
 ### Phase 2 — Portfolio Signals
 - `pipeline portfolio` already ships in Phase 0.5 — multi-project CLI, portfolio HTML dashboard.

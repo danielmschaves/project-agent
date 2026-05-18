@@ -46,6 +46,7 @@ class SourceIngestedPayload(BaseModel):
     filename: str
     source_type: str  # "email" | "doc" | "backlog" | "meeting"
     size_bytes: int
+    sender: str | None = None  # From: header for email sources; used by stakeholder_inactivity
 
 
 class ActionAddedPayload(BaseModel):
@@ -96,6 +97,21 @@ class DecisionMadePayload(BaseModel):
     decided_by: str | None = None
 
 
+class MilestoneAddedPayload(BaseModel):
+    type: Literal["milestone_added"]
+    description: str
+    target_date: str | None = None  # ISO date string e.g. "2026-05-20"
+    status: str = "open"
+    owner: str | None = None
+
+
+class PipelineHealthPayload(BaseModel):
+    type: Literal["pipeline_health"]
+    category: str  # "llm_budget_exceeded" | "ingest_failed" | ...
+    message: str
+    detail: str | None = None
+
+
 class SignalDetectedPayload(BaseModel):
     type: Literal["signal_detected"]
     signal_id: str
@@ -123,6 +139,8 @@ Payload = Annotated[
     | BlockerUpdatedPayload
     | RiskAddedPayload
     | DecisionMadePayload
+    | MilestoneAddedPayload
+    | PipelineHealthPayload
     | SignalDetectedPayload
     | EventRetractedPayload,
     Field(discriminator="type"),
