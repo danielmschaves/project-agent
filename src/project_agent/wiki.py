@@ -26,8 +26,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+from project_agent import llm
 from project_agent.schemas import Event
 
 logger = logging.getLogger(__name__)
@@ -299,6 +300,89 @@ def person_link(registries: Registries, name: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Prose generation — LLM narrative under a spend cap
+# ---------------------------------------------------------------------------
+
+class ProseBudget(BaseModel):
+    """Per-run spend cap for article prose."""
+
+    limit_usd: float = 0.0
+    spent_usd: float = 0.0
+
+    @property
+    def exhausted(self) -> bool:
+        return self.spent_usd >= self.limit_usd
+
+
+class ProseWriter(BaseModel):
+    """Writes article prose through the LLM cache.
+
+    The cache is what makes an LLM-written vault reproducible: prose is keyed
+    on the article's input_hash, so identical inputs replay byte-identical
+    text and a re-run is a zero diff with no API calls.
+
+    Prose is strictly additive. Front-matter, links, evidence and backlinks are
+    all templated, so a failure or an exhausted budget degrades to the
+    deterministic article rather than losing structure or provenance.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    cache_dir: Path
+    prompts_dir: Path
+    model: str
+    budget: ProseBudget = Field(default_factory=ProseBudget)
+    client: Any = None
+    calls: int = 0
+    skipped: int = 0
+
+    def write(self, prompt_name: str, bundle: Any, article_hash: str) -> dict[str, Any] | None:
+        """Prose for one article, or None to fall back to the template."""
+        cached = llm.is_cached(
+            prompt_name, article_hash, self.model, self.cache_dir, self.prompts_dir
+        )
+        # Cached prose is free, so an exhausted budget must not suppress it —
+        # otherwise hitting the cap would regress finished articles.
+        if not cached and self.budget.exhausted:
+            self.skipped += 1
+            return None
+        try:
+            result, cost = llm.extract_with_cost(
+                prompt_name,
+                json.dumps(bundle, indent=2, sort_keys=True, default=str),
+                article_hash,
+                self.model,
+                self.cache_dir,
+                self.prompts_dir,
+                self.client,
+            )
+        except Exception:
+            logger.warning("Prose generation failed for %s — using template", prompt_name)
+            self.skipped += 1
+            return None
+        self.budget.spent_usd += cost
+        self.calls += 1
+        return result
+
+
+def _prose_section(result: dict[str, Any] | None) -> list[str]:
+    """Render an LLM result into a Summary section, or nothing at all."""
+    if not result:
+        return []
+    summary = str(result.get("summary", "")).strip()
+    if not summary:
+        return []
+    lines = ["## Summary", "", summary, ""]
+    points = [str(k).strip() for k in result.get("key_points", []) if str(k).strip()]
+    if points:
+        lines += [f"- {point}" for point in points] + [""]
+    return lines
+
+
+def _compiled_by(prompt_name: str, result: dict[str, Any] | None) -> str:
+    return f"{prompt_name}@1" if result else TEMPLATE_VERSION
+
+# ---------------------------------------------------------------------------
 # Compile manifest + input hashing
 # ---------------------------------------------------------------------------
 
@@ -410,6 +494,7 @@ def _entity_articles(
     events: list[Event],
     source_paths: dict[str, Path],
     registries: Registries,
+    prose: ProseWriter | None = None,
 ) -> list[Article]:
     """One article per distinct entity, grouped by slug.
 
@@ -458,7 +543,12 @@ def _entity_articles(
                     f"**Owner:** {person_link(registries, payload.get('owner'))}",
                 ]
 
+            bundle = event_bundle(group)
+            article_hash = input_hash(bundle)
+            written = prose.write("write-article", bundle, article_hash) if prose else None
+
             body_parts = [f"# {description}", "", " · ".join(facts), ""]
+            body_parts += _prose_section(written)
             if payload.get("rationale"):
                 body_parts += ["## Rationale", "", str(payload["rationale"]), ""]
             body_parts.append(_evidence_section(group, source_paths))
@@ -472,7 +562,8 @@ def _entity_articles(
                     tags=[article_type, f"project/{project_id}"],
                     event_ids=[e.event_id for e in group],
                     source_hashes=[e.source_hash for e in group],
-                    compiled_from=input_hash(event_bundle(group)),
+                    compiled_from=article_hash,
+                    compiled_by=_compiled_by("write-article", written),
                     metadata=meta,
                     body="\n".join(body_parts),
                 )
@@ -485,6 +576,7 @@ def _source_articles(
     events: list[Event],
     source_paths: dict[str, Path],
     entity_articles: list[Article],
+    prose: ProseWriter | None = None,
 ) -> list[Article]:
     """One summary note per raw document, backlinked to what it produced."""
     produced: dict[str, list[Article]] = {}
@@ -507,8 +599,15 @@ def _source_articles(
         if payload.get("sender"):
             facts.append(f"**From:** {payload['sender']}")
 
-        body = [f"# {filename}", "", " · ".join(facts), "", f"`{event.source_ref}`", ""]
         downstream = sorted(produced.get(event.source_hash, []), key=lambda a: a.path)
+        bundle = event_bundle([event]) + [
+            {"produced": a.title, "path": a.path.as_posix()} for a in downstream
+        ]
+        article_hash = input_hash(bundle)
+        written = prose.write("write-source-note", bundle, article_hash) if prose else None
+
+        body = [f"# {filename}", "", " · ".join(facts), "", f"`{event.source_ref}`", ""]
+        body += _prose_section(written)
         body += ["## Produced", ""]
         if downstream:
             body += [f"- {wikilink(a.path, a.title)}" for a in downstream]
@@ -524,9 +623,8 @@ def _source_articles(
                 tags=["source", f"project/{project_id}"],
                 event_ids=[event.event_id],
                 source_hashes=[event.source_hash],
-                compiled_from=input_hash(
-                    event_bundle([event]) + [str(a.path) for a in downstream]
-                ),
+                compiled_from=article_hash,
+                compiled_by=_compiled_by("write-source-note", written),
                 body="\n".join(body),
             )
         )
@@ -538,6 +636,7 @@ def _index_article(
     events: list[Event],
     metadata: dict[str, Any],
     entity_articles: list[Article],
+    prose: ProseWriter | None = None,
 ) -> Article:
     """The project's home note — replaces the old flat project.md."""
     counts = {
@@ -550,11 +649,28 @@ def _index_article(
     }
     title = str(metadata.get("project_name") or metadata.get("title") or project_id)
 
+    passthrough = {
+        k: v
+        for k, v in metadata.items()
+        if k not in {"title", "type", "schema_version", "mission", "scope"}
+    }
+    passthrough.setdefault("id", project_id)
+
+    bundle: dict[str, Any] = {
+        "project_id": project_id,
+        "metadata": {k: v for k, v in sorted(passthrough.items())},
+        "counts": counts,
+        "items": sorted(f"{a.type}: {a.title}" for a in entity_articles),
+    }
+    article_hash = input_hash(bundle)
+    written = prose.write("write-index", bundle, article_hash) if prose else None
+
     body: list[str] = [f"# {title}", ""]
     # Counts are inlined so an agent reads the answer instead of querying for it.
     body += ["| " + " | ".join(counts) + " |"]
     body += ["|" + "---|" * len(counts)]
     body += ["| " + " | ".join(str(v) for v in counts.values()) + " |", ""]
+    body += _prose_section(written)
 
     for heading in ("Mission", "Scope"):
         if metadata.get(heading.casefold()):
@@ -577,22 +693,14 @@ def _index_article(
         )
         body.append("")
 
-    passthrough = {
-        k: v
-        for k, v in metadata.items()
-        if k not in {"title", "type", "schema_version", "mission", "scope"}
-    }
-    passthrough.setdefault("id", project_id)
-
     return Article(
         path=Path("projects") / project_id / "index.md",
         title=title,
         type="project",
         project=project_id,
         tags=["project", f"project/{project_id}"],
-        compiled_from=input_hash(
-            event_bundle(events) + [sorted(str(k) for k in passthrough)]
-        ),
+        compiled_from=article_hash,
+        compiled_by=_compiled_by("write-index", written),
         metadata=passthrough,
         body="\n".join(body),
     )
@@ -604,6 +712,7 @@ def compile_project(
     events: list[Event],
     metadata: dict[str, Any],
     registries: Registries,
+    prose: ProseWriter | None = None,
 ) -> list[Article]:
     """Phase A — project the event log into this project's articles.
 
@@ -612,9 +721,9 @@ def compile_project(
     """
     events = [e for e in events if e.type in PROJECTED_TYPES]
     source_paths = _source_paths(project_id, events)
-    entities = _entity_articles(project_id, events, source_paths, registries)
-    sources = _source_articles(project_id, events, source_paths, entities)
-    index = _index_article(project_id, events, metadata, entities)
+    entities = _entity_articles(project_id, events, source_paths, registries, prose)
+    sources = _source_articles(project_id, events, source_paths, entities, prose)
+    index = _index_article(project_id, events, metadata, entities, prose)
     return [index, *entities, *sources]
 
 
@@ -663,7 +772,9 @@ def _mention_section(mentions: list[Article]) -> list[str]:
     return lines
 
 
-def compile_shared(vault_dir: Path, registries: Registries) -> list[Article]:
+def compile_shared(
+    vault_dir: Path, registries: Registries, prose: ProseWriter | None = None
+) -> list[Article]:
     """Phase B — people, clients, concepts and the portfolio home note.
 
     These fan in across projects, so they cannot be written inside the
@@ -677,41 +788,40 @@ def compile_shared(vault_dir: Path, registries: Registries) -> list[Article]:
 
     articles: list[Article] = []
 
-    for slug, entry in sorted(registries.people.entries.items()):
-        mentions = people_mentions.get(slug, [])
-        body = [f"# {entry.name}", ""]
-        if entry.aliases:
-            body += ["_Also known as: " + ", ".join(sorted(entry.aliases)) + "._", ""]
-        body += ["## Mentioned in", ""]
-        body += _mention_section(mentions) if mentions else ["_No linked articles yet._", ""]
-        articles.append(
-            Article(
-                path=Path("people") / f"{slug}.md",
-                title=entry.name,
-                type="person",
-                tags=["person"],
-                compiled_from=input_hash([slug, sorted(entry.aliases), sorted(str(a.path) for a in mentions)]),
-                body="\n".join(body),
-            )
-        )
+    for kind, registry, mentions_by_slug, folder, heading in (
+        ("person", registries.people, people_mentions, "people", "Mentioned in"),
+        ("concept", registries.concepts, concept_mentions, "concepts", "Referenced by"),
+    ):
+        for slug, entry in sorted(registry.entries.items()):
+            mentions = mentions_by_slug.get(slug, [])
+            bundle = {
+                "slug": slug,
+                "name": entry.name,
+                "aliases": sorted(entry.aliases),
+                "mentions": sorted(
+                    f"{a.project or 'unknown'}: {a.title}" for a in mentions
+                ),
+            }
+            article_hash = input_hash(bundle)
+            written = prose.write("write-concept", bundle, article_hash) if prose else None
 
-    for slug, entry in sorted(registries.concepts.entries.items()):
-        mentions = concept_mentions.get(slug, [])
-        body = [f"# {entry.name}", ""]
-        if entry.aliases:
-            body += ["_Also known as: " + ", ".join(sorted(entry.aliases)) + "._", ""]
-        body += ["## Referenced by", ""]
-        body += _mention_section(mentions) if mentions else ["_No linked articles yet._", ""]
-        articles.append(
-            Article(
-                path=Path("concepts") / f"{slug}.md",
-                title=entry.name,
-                type="concept",
-                tags=["concept"],
-                compiled_from=input_hash([slug, sorted(entry.aliases), sorted(str(a.path) for a in mentions)]),
-                body="\n".join(body),
+            body = [f"# {entry.name}", ""]
+            if entry.aliases:
+                body += ["_Also known as: " + ", ".join(sorted(entry.aliases)) + "._", ""]
+            body += _prose_section(written)
+            body += [f"## {heading}", ""]
+            body += _mention_section(mentions) if mentions else ["_No linked articles yet._", ""]
+            articles.append(
+                Article(
+                    path=Path(folder) / f"{slug}.md",
+                    title=entry.name,
+                    type=kind,  # type: ignore[arg-type]
+                    tags=[kind],
+                    compiled_from=article_hash,
+                    compiled_by=_compiled_by("write-concept", written),
+                    body="\n".join(body),
+                )
             )
-        )
 
     # Clients come from the <client>--<project> id convention, so a client
     # article exists as soon as one of its projects does.

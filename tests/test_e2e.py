@@ -149,7 +149,11 @@ def _run_full_pipeline(
 
     stages.run_ingest("demo--sample-2026", project_dir, events_path, run_id)
     stages.run_parse("demo--sample-2026", project_dir, events_path, cache_dir, prompts_dir, run_id, client=fake_client)
-    stages.run_compile("demo--sample-2026", project_dir, events_path, run_id)
+    # prose_enabled=False: these tests assert the deterministic projection.
+    # LLM prose is covered by test_wiki.py with a recording client.
+    stages.run_compile(
+        "demo--sample-2026", project_dir, events_path, run_id, prose_enabled=False,
+    )
     stages.run_warehouse(events_path, db_path, run_id)
     _, signals = stages.run_analyze(
         "demo--sample-2026", db_path, events_path, run_id, schemas_dir,
@@ -158,7 +162,7 @@ def _run_full_pipeline(
         config_dir=config_dir,
     )
     stages.run_render("demo--sample-2026", project_dir, signals or [], run_id)
-    stages.run_compile_shared(project_dir.parent.parent / "kb")
+    stages.run_compile_shared(project_dir.parent.parent / "kb", prose_enabled=False)
 
     return stages, signals or []
 
@@ -320,7 +324,9 @@ def test_e2e_second_run_zero_new_signals(demo_project: tuple) -> None:
 
     stages.run_ingest("demo--sample-2026", project_dir, events_path, "run-001")
     stages.run_parse("demo--sample-2026", project_dir, events_path, cache_dir, prompts_dir, "run-001", client=client)
-    stages.run_compile("demo--sample-2026", project_dir, events_path, "run-001")
+    stages.run_compile(
+        "demo--sample-2026", project_dir, events_path, "run-001", prose_enabled=False,
+    )
     stages.run_warehouse(events_path, db_path, "run-001")
     r1, _ = stages.run_analyze("demo--sample-2026", db_path, events_path, "run-001", schemas_dir)
     assert r1.counts["signals_new"] >= 3

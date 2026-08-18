@@ -397,3 +397,159 @@ def test_slugify_trims_trailing_stopwords() -> None:
 @pytest.mark.unit
 def test_slugify_keeps_a_lone_stopword() -> None:
     assert wiki.slugify("of the") == "of"
+
+
+# ---------------------------------------------------------------------------
+# Prose generation (PR 3) — LLM narrative, cache-backed
+# ---------------------------------------------------------------------------
+
+def _counting_client(summary: str = "Redis remains the weak point.") -> tuple[object, list[str]]:
+    """Fake Anthropic client that records every call it receives."""
+    calls: list[str] = []
+    import json as _json
+
+    class _Content:
+        text = _json.dumps({"summary": summary, "key_points": ["Design a fallback"]})
+
+    class _Message:
+        content = [_Content()]
+
+    class _Messages:
+        @staticmethod
+        def create(**kwargs: object) -> object:
+            calls.append(str(kwargs.get("model")))
+            return _Message()
+
+    class _Client:
+        messages = _Messages()
+
+    return _Client(), calls
+
+
+def _raising_client() -> object:
+    class _Messages:
+        @staticmethod
+        def create(**kwargs: object) -> object:
+            raise AssertionError("the API must not be called on a cache hit")
+
+    class _Client:
+        messages = _Messages()
+
+    return _Client()
+
+
+def _writer(tmp_path: Path, client: object, limit_usd: float = 1.0) -> wiki.ProseWriter:
+    return wiki.ProseWriter(
+        cache_dir=tmp_path / "cache",
+        prompts_dir=Path("prompts"),
+        model="model-x",
+        budget=wiki.ProseBudget(limit_usd=limit_usd),
+        client=client,
+    )
+
+
+@pytest.mark.integration
+def test_prose_is_inserted_as_a_summary_section(vault_dir: Path, tmp_path: Path) -> None:
+    client, _ = _counting_client()
+    articles = wiki.compile_project(
+        vault_dir, "p", [_source(), _risk("Redis SPOF")], {},
+        _registries(vault_dir), _writer(tmp_path, client),
+    )
+    risk = next(a for a in articles if a.type == "risk")
+    assert "## Summary" in risk.body
+    assert "Redis remains the weak point." in risk.body
+    assert "- Design a fallback" in risk.body
+    assert risk.compiled_by == "write-article@1"
+
+
+@pytest.mark.integration
+def test_prose_never_replaces_links_or_provenance(vault_dir: Path, tmp_path: Path) -> None:
+    """Prose is additive: structure and evidence stay templated."""
+    client, _ = _counting_client()
+    risk = _risk("Redis SPOF")
+    articles = wiki.compile_project(
+        vault_dir, "p", [_source(), risk], {}, _registries(vault_dir), _writer(tmp_path, client)
+    )
+    article = next(a for a in articles if a.type == "risk")
+    assert risk.event_id in article.body
+    assert "## Evidence" in article.body
+    assert article.event_ids == [risk.event_id]
+
+
+@pytest.mark.integration
+def test_template_is_used_when_budget_is_zero(vault_dir: Path, tmp_path: Path) -> None:
+    client, calls = _counting_client()
+    articles = wiki.compile_project(
+        vault_dir, "p", [_source(), _risk("Redis SPOF")], {},
+        _registries(vault_dir), _writer(tmp_path, client, limit_usd=0.0),
+    )
+    risk = next(a for a in articles if a.type == "risk")
+    assert calls == []
+    assert "## Summary" not in risk.body
+    assert risk.compiled_by == "template@1"
+
+
+@pytest.mark.integration
+def test_prose_failure_degrades_to_the_template(vault_dir: Path, tmp_path: Path) -> None:
+    class _Broken:
+        class messages:  # noqa: N801
+            @staticmethod
+            def create(**kwargs: object) -> object:
+                raise RuntimeError("API down")
+
+    articles = wiki.compile_project(
+        vault_dir, "p", [_source(), _risk("Redis SPOF")], {},
+        _registries(vault_dir), _writer(tmp_path, _Broken()),
+    )
+    risk = next(a for a in articles if a.type == "risk")
+    assert "## Summary" not in risk.body
+    assert "## Evidence" in risk.body
+
+
+@pytest.mark.idempotence
+def test_second_compile_makes_zero_api_calls(vault_dir: Path, tmp_path: Path) -> None:
+    """The contract: a re-run replays cached prose and never hits the API."""
+    events = [_source("kickoff.md"), _risk("Redis SPOF")]
+    client, calls = _counting_client()
+
+    first = wiki.compile_project(
+        vault_dir, "p", events, {}, _registries(vault_dir), _writer(tmp_path, client)
+    )
+    for article in first:
+        wiki.write_article(vault_dir, article)
+    assert calls, "first run should have called the API"
+
+    second = wiki.compile_project(
+        vault_dir, "p", events, {}, _registries(vault_dir),
+        _writer(tmp_path, _raising_client()),
+    )
+    assert [wiki.write_article(vault_dir, a) for a in second] == [False] * len(second)
+
+
+@pytest.mark.idempotence
+def test_cached_prose_replays_even_when_the_budget_is_spent(
+    vault_dir: Path, tmp_path: Path
+) -> None:
+    """Hitting the cap must not regress finished articles back to templates."""
+    events = [_source(), _risk("Redis SPOF")]
+    client, _ = _counting_client()
+    wiki.compile_project(vault_dir, "p", events, {}, _registries(vault_dir), _writer(tmp_path, client))
+
+    broke = _writer(tmp_path, _raising_client(), limit_usd=0.0)
+    articles = wiki.compile_project(vault_dir, "p", events, {}, _registries(vault_dir), broke)
+    risk = next(a for a in articles if a.type == "risk")
+    assert "Redis remains the weak point." in risk.body
+
+
+@pytest.mark.integration
+def test_shared_articles_get_prose_too(vault_dir: Path, tmp_path: Path) -> None:
+    (vault_dir / "_registry" / "people.yml").write_text(
+        "bob-kim:\n  name: Bob Kim\n", encoding="utf-8"
+    )
+    _compile_and_write(vault_dir, "acme--one", [_source(), _risk("Redis SPOF", owner="Bob Kim")])
+
+    client, _ = _counting_client("Bob leads engineering on one project.")
+    articles = wiki.compile_shared(vault_dir, _registries(vault_dir), _writer(tmp_path, client))
+    person = next(a for a in articles if a.path == Path("people/bob-kim.md"))
+    assert "Bob leads engineering on one project." in person.body
+    assert person.compiled_by == "write-concept@1"

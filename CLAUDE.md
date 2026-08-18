@@ -127,6 +127,12 @@ Same events → same hash → same bytes → zero diff on re-run. Two consequenc
 - **Only fact events are projected** (`wiki.PROJECTED_TYPES`). `signal_detected` is excluded
   on purpose: Analyze runs *after* Compile and appends to the same log, so including signals
   would make every second run rewrite the vault. It is also the anti-circularity rule.
+- **LLM prose is additive, never structural.** `wiki.ProseWriter` fills a `## Summary`
+  section keyed on the article's `input_hash`; front-matter, wikilinks, evidence and
+  backlinks are always templated. A failed call or an exhausted budget degrades to the
+  deterministic article — it never loses a link or a provenance record.
+- **Cached prose replays even at zero budget.** `llm.is_cached` is checked *before* the
+  budget, so hitting the cap cannot regress a finished article back to its template.
 
 ---
 
@@ -238,6 +244,9 @@ Every package module has a corresponding `tests/test_<module>.py`. Idempotence t
 
 ### Prompts
 - All Claude API prompts live in `prompts/*.md`, loaded by `project_agent.llm.load_prompt(name)`.
+- Compiler prompts (`write-article`, `write-source-note`, `write-concept`, `write-index`) return
+  `{"summary": ...}` and must never emit links, headings or front-matter — the article supplies
+  all structure. Bumping one recompiles every article it touches.
 - Each prompt file has front-matter: `purpose`, `model`, `max_tokens`, `expected_schema`, **`version: <int>`**.
 - Bumping `version` invalidates the LLM cache for that prompt. Never inline prompt text in Python.
 

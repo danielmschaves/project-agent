@@ -106,6 +106,25 @@ def _estimate_cost(message: Any) -> float:
     )
 
 
+def is_cached(
+    prompt_name: str,
+    source_hash: str,
+    model: str,
+    cache_dir: Path,
+    prompts_dir: Path,
+) -> bool:
+    """Whether this exact call would replay from cache instead of hitting the API.
+
+    Callers working under a spend cap need to know this *before* consulting the
+    budget: a cached response costs nothing, so an exhausted budget must never
+    stop it being replayed. Otherwise a run that hits its cap would regress
+    already-generated content back to a cheaper fallback.
+    """
+    prompt = load_prompt(prompt_name, prompts_dir)
+    key = _cache_key(prompt.name, prompt.version, source_hash, model)
+    return (cache_dir / f"{key}.json").exists()
+
+
 def extract_with_cost(
     prompt_name: str,
     source_text: str,
