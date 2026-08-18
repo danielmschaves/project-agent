@@ -1,14 +1,4 @@
-# Entity registry — clients.
-#
-# The compiler resolves names through this file and nothing else: a plain
-# dictionary lookup, so the same corpus always produces the same articles.
-# `pipeline lint` reports names it could not resolve and proposes additions
-# here; a human merges them, which keeps entity resolution behind the HITL
-# gate instead of inside the compiler.
-#
-# Shape:
-#   <slug>:
-#     name: Bob Kim
-#     aliases: ["Bob Kim", "B. Kim", "bob.kim@example.com"]
-#     projects: [acme--platform-2026]
-{}
+# Entity registry — clients. Seeded from the <client>--<project> id convention;
+# add an entry only to override the display name.
+demo:
+  name: Demo Client

@@ -123,6 +123,7 @@ def render_status(
     signals: list[Signal],
     run_id: str,
     output_dir: Path | None = None,
+    vault_dir: Path | None = None,
 ) -> Path:
     """Write a markdown status report and return its path.
 
@@ -133,9 +134,8 @@ def render_status(
         output_dir = project_dir / "reports"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    project = projects.load_project(project_dir)
-    notes_path = project_dir / "project.notes.md"
-    notes = notes_path.read_text(encoding="utf-8") if notes_path.exists() else ""
+    project = projects.load_project(project_dir, vault_dir)
+    notes = projects.notes_body(project_dir)
 
     date_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     report_path = output_dir / f"status-{date_str}.md"
@@ -154,6 +154,7 @@ def render_html(
     run_id: str,
     output_dir: Path | None = None,
     design_system_dir: Path | None = None,
+    vault_dir: Path | None = None,
 ) -> Path:
     """Write an HTML status report and return its path.
 
@@ -167,9 +168,8 @@ def render_html(
 
     css = _load_design_css(_resolve_design_dir(design_system_dir))
 
-    project: dict[str, Any] = projects.load_project(project_dir)
-    notes_path = project_dir / "project.notes.md"
-    notes = notes_path.read_text(encoding="utf-8") if notes_path.exists() else ""
+    project: dict[str, Any] = projects.load_project(project_dir, vault_dir)
+    notes = projects.notes_body(project_dir)
 
     project_id = str(project.get("metadata", {}).get("id", "unknown"))
     events_path = project_dir / "events.ndjson"

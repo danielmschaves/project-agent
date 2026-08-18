@@ -167,9 +167,10 @@ def test_run_parse_mixed_facts(
 
 
 @pytest.mark.integration
-def test_run_parse_updates_project_md(
+def test_run_parse_emits_fact_events(
     project_dir: Path, events_path: Path, tmp_path: Path
 ) -> None:
+    """Parse emits events only — projecting them into the wiki is compile's job."""
     _seed_inbox(project_dir, "notes.md", b"Notes")
     run_ingest("test--project", project_dir, events_path, "run-001")
 
@@ -192,9 +193,14 @@ def test_run_parse_updates_project_md(
         client=_make_fake_client(fake_response),
     )
 
-    content = (project_dir / "project.md").read_text(encoding="utf-8")
-    assert "Ship feature" in content
-    assert "alice" in content
+    actions = events_api.query(events_path, types=["action_added"])
+    assert len(actions) == 1
+    payload = actions[0].payload.model_dump()
+    assert payload["description"] == "Ship feature"
+    assert payload["owner"] == "alice"
+
+    # Parse must not write project state anywhere.
+    assert not (project_dir / "project.md").exists()
 
 
 @pytest.mark.integration
@@ -429,10 +435,10 @@ def test_run_parse_all_facts_idempotent(
 
 
 @pytest.mark.idempotence
-def test_run_parse_project_md_idempotent(
+def test_run_parse_event_log_idempotent(
     project_dir: Path, events_path: Path, tmp_path: Path
 ) -> None:
-    """project.md must be identical after two parse runs on the same source."""
+    """The event log must be byte-identical after two parse runs on one source."""
     _seed_inbox(project_dir, "notes.md", b"# Notes")
     run_ingest("test--project", project_dir, events_path, "run-001")
 
@@ -457,9 +463,9 @@ def test_run_parse_project_md_idempotent(
         run_id="run-001",
         client=_make_fake_client(fake_response),
     )
-    content_after_first = (project_dir / "project.md").read_text(encoding="utf-8")
+    content_after_first = events_path.read_text(encoding="utf-8")
 
-    # Second run skips parse — project.md should not be touched
+    # Second run skips parse — nothing may be appended
     run_parse(
         project_id="test--project",
         project_dir=project_dir,
@@ -469,6 +475,6 @@ def test_run_parse_project_md_idempotent(
         run_id="run-002",
         client=_raising_client(),
     )
-    content_after_second = (project_dir / "project.md").read_text(encoding="utf-8")
+    content_after_second = events_path.read_text(encoding="utf-8")
 
     assert content_after_first == content_after_second

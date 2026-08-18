@@ -1,4 +1,4 @@
-"""Tests for project_agent.projects (load_project, update_project)."""
+"""Tests for project_agent.projects — reading state out of the compiled wiki."""
 from pathlib import Path
 
 import pytest
@@ -6,13 +6,21 @@ import pytest
 from project_agent import projects
 
 
-def _write_project_md(project_dir: Path, content: str) -> None:
-    (project_dir / "project.md").write_text(content, encoding="utf-8")
+# ---------------------------------------------------------------------------
+# index_path / load_project
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+def test_index_path_resolves_vault_from_project_dir(project_dir: Path) -> None:
+    path = projects.index_path(project_dir)
+    assert path == project_dir.parent.parent / "kb" / "projects" / "test--project" / "index.md"
 
 
-# ---------------------------------------------------------------------------
-# load_project
-# ---------------------------------------------------------------------------
+@pytest.mark.unit
+def test_index_path_honours_explicit_vault(project_dir: Path, tmp_path: Path) -> None:
+    elsewhere = tmp_path / "other-vault"
+    assert projects.index_path(project_dir, elsewhere).is_relative_to(elsewhere)
+
 
 @pytest.mark.unit
 def test_load_project_parses_frontmatter(project_dir: Path) -> None:
@@ -30,101 +38,54 @@ def test_load_project_parses_sections(project_dir: Path) -> None:
 
 @pytest.mark.unit
 def test_load_project_missing_section_not_present(project_dir: Path) -> None:
-    result = projects.load_project(project_dir)
-    assert "Actions" not in result["sections"]
+    assert "Actions" not in projects.load_project(project_dir)["sections"]
 
 
 # ---------------------------------------------------------------------------
-# update_project
+# PM-owned metadata — project.notes.md front-matter
 # ---------------------------------------------------------------------------
 
-@pytest.mark.integration
-def test_update_project_writes_actions_section(project_dir: Path) -> None:
-    facts = [
-        {"type": "action_added", "description": "Deploy API", "owner": "alice", "due": "2026-06-01", "status": "open"},
-    ]
-    projects.update_project(project_dir, facts)
-
-    content = (project_dir / "project.md").read_text(encoding="utf-8")
-    assert "## Actions" in content
-    assert "Deploy API" in content
-    assert "owner: alice" in content
-    assert "due: 2026-06-01" in content
+@pytest.mark.unit
+def test_notes_metadata_reads_declared_fields(project_dir: Path) -> None:
+    (project_dir / "project.notes.md").write_text(
+        "---\nstatus: amber\nsponsor: Dana\nphase: build\n---\n\n# Notes\n", encoding="utf-8"
+    )
+    meta = projects.load_notes_metadata(project_dir)
+    assert meta["status"] == "amber"
+    assert meta["sponsor"] == "Dana"
+    assert meta["phase"] == "build"
 
 
-@pytest.mark.integration
-def test_update_project_writes_blockers_section(project_dir: Path) -> None:
-    facts = [
-        {"type": "blocker_added", "description": "Missing credentials", "owner": None, "due": None},
-    ]
-    projects.update_project(project_dir, facts)
-
-    content = (project_dir / "project.md").read_text(encoding="utf-8")
-    assert "## Blockers" in content
-    assert "Missing credentials" in content
+@pytest.mark.unit
+def test_notes_metadata_defaults_when_front_matter_absent(project_dir: Path) -> None:
+    """A project with only free-form notes still compiles, using defaults."""
+    (project_dir / "project.notes.md").write_text("# Just prose\n", encoding="utf-8")
+    meta = projects.load_notes_metadata(project_dir)
+    assert meta == {"id": "test--project", "client": "test", "status": "green"}
 
 
-@pytest.mark.integration
-def test_update_project_preserves_mission_section(project_dir: Path) -> None:
-    facts = [
-        {"type": "action_added", "description": "Ship it", "owner": None, "due": None, "status": "open"},
-    ]
-    projects.update_project(project_dir, facts)
-
-    content = (project_dir / "project.md").read_text(encoding="utf-8")
-    assert "## Mission" in content
-    assert "Test project" in content
+@pytest.mark.unit
+def test_notes_metadata_defaults_when_file_missing(project_dir: Path) -> None:
+    (project_dir / "project.notes.md").unlink()
+    assert projects.load_notes_metadata(project_dir)["id"] == "test--project"
 
 
-@pytest.mark.integration
-def test_update_project_preserves_frontmatter(project_dir: Path) -> None:
-    facts = [{"type": "action_added", "description": "x", "owner": None, "due": None, "status": "open"}]
-    projects.update_project(project_dir, facts)
-
-    result = projects.load_project(project_dir)
-    assert result["metadata"]["id"] == "test--project"
-    assert result["metadata"]["status"] == "green"
+@pytest.mark.unit
+def test_notes_metadata_derives_client_from_project_id(project_dir: Path) -> None:
+    assert projects.load_notes_metadata(project_dir)["client"] == "test"
 
 
-@pytest.mark.integration
-def test_update_project_owner_null_renders_dash(project_dir: Path) -> None:
-    facts = [{"type": "action_added", "description": "Task A", "owner": None, "due": None, "status": "open"}]
-    projects.update_project(project_dir, facts)
-
-    content = (project_dir / "project.md").read_text(encoding="utf-8")
-    assert "owner: —" in content
-    assert "due: —" in content
-
-
-@pytest.mark.integration
-def test_update_project_never_touches_notes_file(project_dir: Path) -> None:
-    original_notes = (project_dir / "project.notes.md").read_text(encoding="utf-8")
-    facts = [{"type": "action_added", "description": "x", "owner": None, "due": None, "status": "open"}]
-
-    projects.update_project(project_dir, facts)
-
-    assert (project_dir / "project.notes.md").read_text(encoding="utf-8") == original_notes
+@pytest.mark.unit
+def test_notes_body_strips_front_matter(project_dir: Path) -> None:
+    (project_dir / "project.notes.md").write_text(
+        "---\nstatus: green\n---\n\n# PM Notes\n\nRedis worries me.\n", encoding="utf-8"
+    )
+    body = projects.notes_body(project_dir)
+    assert "Redis worries me" in body
+    assert "status: green" not in body
 
 
-@pytest.mark.integration
-def test_update_project_idempotent_on_same_facts(project_dir: Path) -> None:
-    facts = [
-        {"type": "action_added", "description": "Do thing", "owner": "bob", "due": "2026-07-01", "status": "open"},
-        {"type": "blocker_added", "description": "No access", "owner": None, "due": None},
-    ]
-    projects.update_project(project_dir, facts)
-    content_first = (project_dir / "project.md").read_text(encoding="utf-8")
-
-    projects.update_project(project_dir, facts)
-    content_second = (project_dir / "project.md").read_text(encoding="utf-8")
-
-    assert content_first == content_second
-
-
-@pytest.mark.integration
-def test_update_project_empty_facts_leaves_empty_canonical_sections(project_dir: Path) -> None:
-    projects.update_project(project_dir, [])
-    content = (project_dir / "project.md").read_text(encoding="utf-8")
-    assert "## Actions" in content
-    assert "## Blockers" in content
-    assert "## Mission" in content
+@pytest.mark.unit
+def test_notes_body_empty_when_file_missing(project_dir: Path) -> None:
+    (project_dir / "project.notes.md").unlink()
+    assert projects.notes_body(project_dir) == ""

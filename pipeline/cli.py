@@ -50,6 +50,8 @@ def main() -> None:
                        help="Root directory containing project folders (default: projects/)")
     run_p.add_argument("--data-dir", default="data",
                        help="Data directory for warehouse and cache (default: data/)")
+    run_p.add_argument("--vault-dir", default="kb",
+                       help="Obsidian vault holding the compiled wiki (default: kb/)")
     run_p.add_argument("--dry-run", action="store_true",
                        help="Skip git commit/PR (sets DRY_RUN=1)")
     run_p.add_argument("--model", default="claude-sonnet-4-6",
@@ -61,6 +63,8 @@ def main() -> None:
                         help="Root directory containing project folders (default: projects/)")
     port_p.add_argument("--data-dir", default="data",
                         help="Data directory for warehouse and cache (default: data/)")
+    port_p.add_argument("--vault-dir", default="kb",
+                        help="Obsidian vault holding the compiled wiki (default: kb/)")
     port_p.add_argument("--dry-run", action="store_true",
                         help="Skip git commit/PR (sets DRY_RUN=1)")
     port_p.add_argument("--model", default="claude-sonnet-4-6",
@@ -97,6 +101,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     cache_dir = data_dir / "cache" / "llm"
     prompts_dir = Path("prompts")
     schemas_dir = Path("data/schemas/signals")
+    vault_dir = Path(args.vault_dir)
 
     events_path.touch()
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -134,6 +139,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
         model=args.model,
     ))
 
+    # Stage 2b — Compile (Phase A only; the shared layer needs every project)
+    r2b, _ = _step("compile", stages.run_compile(
+        project_id, project_dir, events_path, run_id, vault_dir=vault_dir,
+    ))
+
     # Stage 3 — Warehouse
     r3, _ = _step("warehouse", stages.run_warehouse(events_path, db_path, run_id))
 
@@ -144,6 +154,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         cache_dir=cache_dir,
         prompts_dir=prompts_dir,
         model=args.model,
+        vault_dir=vault_dir,
     ))
     signals = signals or []
 
@@ -171,7 +182,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     # Stage 5 — Render
     _step("render", stages.run_render(
-        project_id, project_dir, signals, run_id, design_system_dir=design_system_dir
+        project_id, project_dir, signals, run_id,
+        design_system_dir=design_system_dir, vault_dir=vault_dir,
     ))
 
     # Stage 6 — Commit
@@ -222,6 +234,7 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
 
     # Every project's log, so each warehouse rebuild holds the whole portfolio.
     # Detectors scope their SQL by project_id, so cross-project rows are inert.
+    vault_dir = Path(args.vault_dir)
     all_events_paths = [projects_dir / pid / "events.ndjson" for pid in project_ids]
     for path in all_events_paths:
         path.touch()
@@ -256,6 +269,9 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
             project_id, project_dir, events_path, cache_dir, prompts_dir, run_id,
             model=args.model,
         ))
+        r2b, _ = _step("compile", stages.run_compile(
+            project_id, project_dir, events_path, run_id, vault_dir=vault_dir,
+        ))
         r3, _ = _step("warehouse", stages.run_warehouse(all_events_paths, db_path, run_id))
         r4, signals = _step("analyze", stages.run_analyze(
             project_id, db_path, events_path, run_id, schemas_dir,
@@ -263,6 +279,7 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
             cache_dir=cache_dir,
             prompts_dir=prompts_dir,
             model=args.model,
+            vault_dir=vault_dir,
         ))
         signals = signals or []
 
@@ -288,7 +305,8 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
                     ))
 
         _step("render", stages.run_render(
-            project_id, project_dir, signals, run_id, design_system_dir=design_system_dir
+            project_id, project_dir, signals, run_id,
+            design_system_dir=design_system_dir, vault_dir=vault_dir,
         ))
 
         run_log.ended_at = datetime.now(tz=timezone.utc)
@@ -298,7 +316,7 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
             run_log.model_dump_json(indent=2), encoding="utf-8"
         )
 
-        project_meta = projects_api.load_project(project_dir)
+        project_meta = projects_api.load_project(project_dir, vault_dir)
         project_status = str(project_meta.get("metadata", {}).get("status", "unknown"))
         _source_events = events_api.query(
             events_path, project_id=project_id, types=["source_ingested"]
@@ -322,6 +340,11 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
             events_count=len(events_api.query(events_path, project_id=project_id)),
         ))
         portfolio_results.append((project_id, run_log, list(signals)))
+
+    # Stage 2b Phase B — the shared layer, once every project is compiled
+    shared = stages.run_compile_shared(vault_dir)
+    status_str = "✓" if shared.status == "ok" else f"✗ {shared.status}"
+    print(f"\n  {'shared':12s} {status_str}  {shared.counts}")
 
     # Stage 5b — portfolio HTML dashboard (before commit so it lands in the PR)
     reports_dir = Path(".") / "reports"

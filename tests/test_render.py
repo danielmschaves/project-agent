@@ -118,9 +118,13 @@ def test_report_no_pm_notes_section_when_empty(project_dir: Path) -> None:
 
 @pytest.mark.unit
 def test_report_contains_actions_section(project_dir: Path) -> None:
-    # Seed project.md with an Actions section
-    (project_dir / "project.md").write_text(
-        "---\nid: test--project\nstatus: green\n---\n\n## Mission\nTest.\n\n## Actions\n\n- [ ] Deploy | owner: alice | due: 2026-06-01 | status: open\n",
+    # Seed the wiki index article with an Actions section
+    from project_agent import projects as _projects
+    index = _projects.index_path(project_dir)
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        "---\nid: test--project\nstatus: green\ntype: project\n---\n\n## Mission\nTest.\n\n"
+        "## Actions\n\n- [ ] Deploy | owner: alice | due: 2026-06-01 | status: open\n",
         encoding="utf-8",
     )
     path = render.render_status(project_dir, [], "run-001")
