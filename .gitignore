@@ -28,12 +28,23 @@ projects/*/project.md
 projects/*/reports/
 
 # Ingest/parse state manifests
-projects/*/sources/manifest.json
-projects/*/sources/parse_manifest.json
+projects/*/raw/manifest.json
+projects/*/raw/parse_manifest.json
+projects/*/raw/compile_manifest.json
+
+# NOTE: kb/ is deliberately NOT ignored. The compiled wiki is the readable
+# source of truth and must be present on a fresh clone, or the Obsidian
+# vault opens empty. Pipeline runs therefore dirty kb/ on dev branches.
 
 # Portfolio reports
 reports/*.html
 reports/*.md
+
+# Obsidian — vault config is committed; per-machine UI state is not
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.obsidian/plugins/
 
 # IDE
 .vscode/

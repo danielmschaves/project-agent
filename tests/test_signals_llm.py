@@ -85,7 +85,7 @@ def _risk_event(
     return Event(
         event_id=str(uuid.uuid4()), ts=ts, run_id="run-001",
         project_id=project_id, type="risk_added", actor=_llm_actor(),
-        source_ref="sources/docs/doc.md", source_hash=sh, payload=payload,
+        source_ref="raw/docs/doc.md", source_hash=sh, payload=payload,
         hash=events_api.hash_event(payload.model_dump(), sh),
     )
 
@@ -108,7 +108,7 @@ def _source_event(
         event_id=str(uuid.uuid4()), ts=ts, run_id="run-001",
         project_id=project_id, type="source_ingested",
         actor=DeterministicActor(kind="deterministic", detector="inbox"),
-        source_ref=f"sources/email/email.eml", source_hash=sh,
+        source_ref=f"raw/email/email.eml", source_hash=sh,
         payload=payload, hash=events_api.hash_event(payload.model_dump(), sh),
     )
 

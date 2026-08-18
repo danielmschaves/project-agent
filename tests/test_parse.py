@@ -53,7 +53,7 @@ def _seed_prompts(prompts_dir: Path) -> None:
 
 
 def _seed_inbox(project_dir: Path, filename: str, content: bytes) -> None:
-    inbox = project_dir / "sources" / "_inbox"
+    inbox = project_dir / "raw" / "_inbox"
     inbox.mkdir(parents=True, exist_ok=True)
     (inbox / filename).write_bytes(content)
 

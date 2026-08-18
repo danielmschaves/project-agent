@@ -138,11 +138,19 @@ project-agent/
 │   └── stages.py                   # one function per layer
 ├── agents/                         # Phase 5b — empty until then
 │   └── .gitkeep
+├── .obsidian/                      # committed Obsidian vault config (repo root is the vault)
+├── kb/                             # THE COMPILED WIKI — bot-owned, committed, LLM-compiled
+│   ├── index.md                    # portfolio home / map-of-content
+│   ├── projects/<id>/              # index.md + risks/ decisions/ milestones/ sources/
+│   ├── people/ clients/ concepts/  # shared across projects — one article per entity
+│   ├── research/sources/           # research corpus lane
+│   ├── outputs/                    # filed-back answers; the only place ```duckdb blocks may live
+│   └── _registry/                  # committed alias registry driving entity resolution
 ├── projects/                       # managed projects
 │   └── <client>--<project>/
 │       ├── project.md              # SOURCE OF TRUTH — bot-owned, full-rewrite canonical sections
 │       ├── project.notes.md        # PM-owned, NEVER touched by the pipeline. Free-form.
-│       ├── sources/                # immutable raw inputs
+│       ├── raw/                    # immutable raw corpus (renamed from sources/)
 │       │   ├── _inbox/             # file-drop staging
 │       │   ├── emails/
 │       │   ├── meetings/
@@ -282,7 +290,7 @@ Because `project.md` is full-rewrite from sources, the Parse layer must be deter
     "id":     "<user>",
     "source": "gmail"
   },
-  "source_ref": "projects/.../sources/emails/2026-05-09-alex.eml",
+  "source_ref": "projects/.../raw/emails/2026-05-09-alex.eml",
   "source_hash": "sha256:abc123...",
   "payload": { "type": "<event-type>", "...": "type-specific fields" },
   "confidence": 0.93,
@@ -439,7 +447,7 @@ CLI: `python -m pipeline run --project <id>` or `python -m pipeline run --all`.
 Each stage is one function in `pipeline/stages.py` that imports primitives from `project_agent.*`. Every stage writes a stage summary into the operations log (§6.4) before returning.
 
 ### 8.1 Ingest
-- **MVP:** `project_agent.ingest.inbox` scans `sources/_inbox/`, classifies by extension, moves to typed folders, updates `manifest.json` with hashes. **File-drop is the only ingest path in MVP.** This isolates pipeline-shape bugs from auth/network/vendor variance.
+- **MVP:** `project_agent.ingest.inbox` scans `raw/_inbox/`, classifies by extension, moves to typed folders, updates `manifest.json` with hashes. **File-drop is the only ingest path in MVP.** This isolates pipeline-shape bugs from auth/network/vendor variance.
 - **MVP:** `project_agent.ingest.backlog` reads CSV/JSON via a per-project mapper config.
 - **Phase 0.5:** `project_agent.ingest.mcp` ports Gmail/Drive/Calendar integrations from the existing pipeline.
 - **Idempotence:** files already in `manifest.json` (by `source_hash`) are skipped, regardless of ingest source. The first time a file is seen, a `source_ingested` event is emitted with the hash.
@@ -504,7 +512,7 @@ Each stage is one function in `pipeline/stages.py` that imports primitives from 
 
 **Definition of Done:**
 
-1. One project (`projects/<one-project>/`) onboarded with hand-curated `project.md`, an empty (or seeded) `project.notes.md`, and a folder of past artifacts dropped into `sources/_inbox/`.
+1. One project (`projects/<one-project>/`) onboarded with hand-curated `project.md`, an empty (or seeded) `project.notes.md`, and a folder of past artifacts dropped into `raw/_inbox/`.
 2. `python -m pipeline run --project <id>` executes all six stages end-to-end with no manual intervention. Ingest is **file-drop only** in MVP (MCP is Phase 0.5).
 3. Re-running on the same day produces zero diff (idempotence verified by `git status` clean after a second run). The LLM response cache (§6.2) is what makes this hold.
 4. NDJSON contains ≥ 20 events spanning ≥ 7 days of project history. *(Reduced from 100 events / 30 days in v0.3 — smaller fixtures are enough to prove the pipeline shape; backfill of real history is a separate exercise.)*

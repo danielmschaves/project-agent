@@ -1,0 +1,15 @@
+{
+  "newLinkFormat": "absolute",
+  "useMarkdownLinks": false,
+  "alwaysUpdateLinks": true,
+  "attachmentFolderPath": "kb/_attachments",
+  "userIgnoreFilters": [
+    "src/",
+    "tests/",
+    "pipeline/",
+    "scripts/",
+    "data/",
+    "design-system/",
+    ".venv/"
+  ]
+}
