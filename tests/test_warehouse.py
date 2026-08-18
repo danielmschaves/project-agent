@@ -491,3 +491,132 @@ def test_run_warehouse_idempotent(events_path: Path, db_path: Path) -> None:
 
     assert r1.status == r2.status == "ok"
     assert r1.counts["events_loaded"] == r2.counts["events_loaded"]
+
+
+# ---------------------------------------------------------------------------
+# Multi-project load — one warehouse holds the whole portfolio
+# ---------------------------------------------------------------------------
+
+def _project_event(project_id: str, source_hash: str) -> Event:
+    payload = SourceIngestedPayload(
+        type="source_ingested", filename="doc.md", source_type="doc", size_bytes=10
+    )
+    return Event(
+        event_id=str(uuid.uuid4()),
+        ts=datetime.now(tz=timezone.utc),
+        run_id="run-001",
+        project_id=project_id,
+        type="source_ingested",
+        actor=_actor(),
+        source_ref="raw/docs/doc.md",
+        source_hash=source_hash,
+        payload=payload,
+        hash=events_api.hash_event(payload.model_dump(), source_hash),
+    )
+
+
+@pytest.mark.integration
+def test_load_accepts_multiple_event_logs(tmp_path: Path, db_path: Path) -> None:
+    log_a = tmp_path / "a.ndjson"
+    log_b = tmp_path / "b.ndjson"
+    events_api.append(_project_event("acme--one", "sha256:a1"), log_a)
+    events_api.append(_project_event("acme--one", "sha256:a2"), log_a)
+    events_api.append(_project_event("globex--two", "sha256:b1"), log_b)
+
+    warehouse.load([log_a, log_b], db_path)
+
+    rows = warehouse.query(
+        db_path,
+        "SELECT project_id, COUNT(*) AS n FROM events GROUP BY project_id ORDER BY project_id",
+    )
+    assert rows == [
+        {"project_id": "acme--one", "n": 2},
+        {"project_id": "globex--two", "n": 1},
+    ]
+
+
+@pytest.mark.integration
+def test_load_still_accepts_a_single_path(tmp_path: Path, db_path: Path) -> None:
+    log = tmp_path / "a.ndjson"
+    events_api.append(_project_event("acme--one", "sha256:a1"), log)
+
+    warehouse.load(log, db_path)
+
+    assert warehouse.query(db_path, "SELECT COUNT(*) AS n FROM events")[0]["n"] == 1
+
+
+@pytest.mark.idempotence
+def test_multi_project_load_is_idempotent(tmp_path: Path, db_path: Path) -> None:
+    log_a = tmp_path / "a.ndjson"
+    log_b = tmp_path / "b.ndjson"
+    events_api.append(_project_event("acme--one", "sha256:a1"), log_a)
+    events_api.append(_project_event("globex--two", "sha256:b1"), log_b)
+
+    warehouse.load([log_a, log_b], db_path)
+    first = warehouse.query(db_path, "SELECT COUNT(*) AS n FROM events_raw")[0]["n"]
+    warehouse.load([log_a, log_b], db_path)
+    second = warehouse.query(db_path, "SELECT COUNT(*) AS n FROM events_raw")[0]["n"]
+
+    assert first == second == 2
+
+
+@pytest.mark.integration
+def test_views_hide_events_retracted_by_a_later_event(
+    events_path: Path, db_path: Path
+) -> None:
+    """warehouse views and events.query() must agree on what a retraction hides."""
+    keep = _source_event("sha256:keep")
+    drop = _source_event("sha256:drop")
+    events_api.append(keep, events_path)
+    events_api.append(drop, events_path)
+    events_api.retract(
+        events_path,
+        event_id=drop.event_id,
+        reason="misparsed",
+        run_id="run-002",
+        project_id="test--project",
+        actor=_actor(),
+    )
+
+    warehouse.load(events_path, db_path)
+
+    visible = {
+        r["event_id"]
+        for r in warehouse.query(
+            db_path, "SELECT event_id FROM events WHERE type = 'source_ingested'"
+        )
+    }
+    assert visible == {keep.event_id}
+
+    from_api = {
+        e.event_id for e in events_api.query(events_path, types=["source_ingested"])
+    }
+    assert visible == from_api
+
+    full = warehouse.query(
+        db_path,
+        f"SELECT retracted, retracted_reason FROM events_full WHERE event_id = '{drop.event_id}'",
+    )
+    assert full[0]["retracted"] is True
+    assert full[0]["retracted_reason"] == "misparsed"
+
+
+@pytest.mark.integration
+def test_views_hide_events_superseded_by_a_later_event(
+    events_path: Path, db_path: Path
+) -> None:
+    old = _source_event("sha256:v1")
+    new = _source_event("sha256:v2")
+    new.supersedes = [old.event_id]
+    events_api.append(old, events_path)
+    events_api.append(new, events_path)
+
+    warehouse.load(events_path, db_path)
+
+    visible = {r["event_id"] for r in warehouse.query(db_path, "SELECT event_id FROM events")}
+    assert visible == {new.event_id}
+
+    linked = warehouse.query(
+        db_path, f"SELECT superseded_by FROM events_full WHERE event_id = '{old.event_id}'"
+    )
+    assert linked[0]["superseded_by"] == new.event_id

@@ -236,7 +236,7 @@ def run_parse(
         parse_manifest_path = project_dir / "sources" / "parse_manifest.json"
         parse_manifest = _load_parse_manifest(parse_manifest_path)
 
-        _, prompt_version = llm.load_prompt(prompt_name, prompts_dir)
+        prompt_version = llm.load_prompt(prompt_name, prompts_dir).version
         manifest_key_suffix = f"{prompt_name}@{prompt_version}"
 
         source_events = events_api.query(
@@ -333,11 +333,15 @@ def run_parse(
 # ---------------------------------------------------------------------------
 
 def run_warehouse(
-    events_path: Path,
+    events_path: Path | list[Path],
     db_path: Path,
     run_id: str,
 ) -> StageResult:
-    """Stage 3 — materialize events into DuckDB views (PRD §8.3, MVP)."""
+    """Stage 3 — materialize events into DuckDB views (PRD §8.3, MVP).
+
+    Takes a list in portfolio mode so the warehouse ends up holding every
+    project rather than only the last one processed.
+    """
     start = time.monotonic()
     events_loaded = 0
 

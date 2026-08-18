@@ -220,6 +220,12 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
     portfolio_results: list[tuple[str, RunLog, list[Signal]]] = []
     portfolio_summaries: list[PortfolioProject] = []
 
+    # Every project's log, so each warehouse rebuild holds the whole portfolio.
+    # Detectors scope their SQL by project_id, so cross-project rows are inert.
+    all_events_paths = [projects_dir / pid / "events.ndjson" for pid in project_ids]
+    for path in all_events_paths:
+        path.touch()
+
     for project_id in project_ids:
         project_dir = projects_dir / project_id
         run_id = uuid.uuid4().hex[:8]
@@ -250,7 +256,7 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
             project_id, project_dir, events_path, cache_dir, prompts_dir, run_id,
             model=args.model,
         ))
-        r3, _ = _step("warehouse", stages.run_warehouse(events_path, db_path, run_id))
+        r3, _ = _step("warehouse", stages.run_warehouse(all_events_paths, db_path, run_id))
         r4, signals = _step("analyze", stages.run_analyze(
             project_id, db_path, events_path, run_id, schemas_dir,
             project_dir=project_dir,

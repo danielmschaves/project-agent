@@ -31,3 +31,24 @@ def events_path(tmp_path: Path) -> Path:
     path = tmp_path / "events.ndjson"
     path.touch()
     return path
+
+
+@pytest.fixture
+def raw_dir(tmp_path: Path) -> Path:
+    """Raw source tree for one project: drop zone plus typed folders."""
+    root = tmp_path / "raw"
+    for subdir in ["_inbox", "emails", "docs", "backlog", "meetings"]:
+        (root / subdir).mkdir(parents=True)
+    (root / "manifest.json").write_text("{}", encoding="utf-8")
+    return root
+
+
+@pytest.fixture
+def vault_dir(tmp_path: Path) -> Path:
+    """Empty kb/ vault skeleton with its entity registry."""
+    root = tmp_path / "kb"
+    for subdir in ["projects", "people", "clients", "concepts", "outputs", "_registry"]:
+        (root / subdir).mkdir(parents=True)
+    for registry in ["people", "clients", "concepts"]:
+        (root / "_registry" / f"{registry}.yml").write_text("{}\n", encoding="utf-8")
+    return root

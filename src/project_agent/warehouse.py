@@ -96,17 +96,26 @@ _MILESTONES_COLS = """
 """
 
 
-def load(events_path: Path, db_path: Path) -> None:
-    """Read events.ndjson and materialize into DuckDB tables and views.
+def load(events_path: Path | list[Path], db_path: Path) -> None:
+    """Read one or more events.ndjson logs and materialize them into DuckDB.
+
+    Accepts a list so a portfolio run can hold every project's events in one
+    warehouse — rows stay distinguishable by the `project_id` column, and all
+    detectors already scope their SQL to a single project.  Passing one path
+    loads just that project.
 
     Called idempotently: CREATE OR REPLACE TABLE rebuilds events_raw from
     scratch on every load, so re-runs produce identical state.
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    all_events = events_api.query(
-        events_path, include_retracted=True, include_superseded=True
-    )
+    paths = [events_path] if isinstance(events_path, Path) else events_path
+    all_events = [event for path in paths for event in events_api.read_all(path)]
+
+    # Retractions and supersessions live on the correcting event, so resolve
+    # them here and materialize the effective flags — otherwise the SQL views
+    # would keep serving rows that events.query() already hides.
+    corrections = events_api.resolve_corrections(all_events)
 
     con = duckdb.connect(str(db_path))
     try:
@@ -128,9 +137,9 @@ def load(events_path: Path, db_path: Path) -> None:
                     e.hash,
                     e.confidence,
                     json.dumps(e.supersedes),
-                    e.superseded_by,
-                    e.retracted,
-                    e.retracted_reason,
+                    e.superseded_by or corrections.superseded_by.get(e.event_id),
+                    e.retracted or e.event_id in corrections.retracted,
+                    e.retracted_reason or corrections.retracted.get(e.event_id),
                 )
                 for e in all_events
             ]
