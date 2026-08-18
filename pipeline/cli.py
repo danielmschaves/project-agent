@@ -71,11 +71,83 @@ def main() -> None:
                         metavar="MODEL",
                         help="Claude model for parse stage (default: claude-sonnet-4-6)")
 
+    search_p = sub.add_parser("search", help="Search the compiled wiki")
+    search_p.add_argument("query", help="Free-text query, e.g. \"redis circuit breaker\"")
+    search_p.add_argument("--limit", type=int, default=10, help="Max results (default: 10)")
+    search_p.add_argument("--data-dir", default="data",
+                          help="Data directory holding warehouse.duckdb (default: data/)")
+
+    sql_p = sub.add_parser("wiki-sql", help="Run a read-only SQL query against the warehouse")
+    sql_p.add_argument("sql", help="SQL over documents / links / backlinks / events")
+    sql_p.add_argument("--data-dir", default="data",
+                       help="Data directory holding warehouse.duckdb (default: data/)")
+
     args = parser.parse_args()
     if args.command == "run":
         sys.exit(_cmd_run(args))
     elif args.command == "portfolio":
         sys.exit(_cmd_portfolio(args))
+    elif args.command == "search":
+        sys.exit(_cmd_search(args))
+    elif args.command == "wiki-sql":
+        sys.exit(_cmd_wiki_sql(args))
+
+
+def _warehouse_path(args: argparse.Namespace) -> Path | None:
+    """The warehouse file, or None with an explanation printed."""
+    db_path = Path(args.data_dir) / "warehouse.duckdb"
+    if not db_path.exists():
+        print(
+            f"ERROR: no warehouse at {db_path}. Run the pipeline first "
+            "(python -m pipeline portfolio) to build it.",
+            file=sys.stderr,
+        )
+        return None
+    return db_path
+
+
+def _cmd_search(args: argparse.Namespace) -> int:
+    """Rank wiki articles against a query. Read-only; designed to be piped."""
+    db_path = _warehouse_path(args)
+    if db_path is None:
+        return 1
+
+    from project_agent import warehouse
+
+    rows = warehouse.search(db_path, args.query, args.limit)
+    if not rows:
+        print("No matches.")
+        return 0
+
+    for row in rows:
+        scope = row["project"] or "shared"
+        print(f"{row['score']:>6.1f}  {row['type']:<9} {scope:<22} {row['path']}")
+        print(f"        {row['title']}")
+    return 0
+
+
+def _cmd_wiki_sql(args: argparse.Namespace) -> int:
+    """Arbitrary read-only SQL over the warehouse, printed as TSV."""
+    db_path = _warehouse_path(args)
+    if db_path is None:
+        return 1
+
+    from project_agent import warehouse
+
+    try:
+        rows = warehouse.query(db_path, args.sql)
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    if not rows:
+        print("(no rows)")
+        return 0
+
+    print("\t".join(rows[0].keys()))
+    for row in rows:
+        print("\t".join("" if v is None else str(v) for v in row.values()))
+    return 0
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -147,7 +219,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
     ))
 
     # Stage 3 — Warehouse
-    r3, _ = _step("warehouse", stages.run_warehouse(events_path, db_path, run_id))
+    r3, _ = _step("warehouse", stages.run_warehouse(
+        events_path, db_path, run_id, vault_dir=vault_dir,
+    ))
 
     # Stage 4 — Analyze
     r4, signals = _step("analyze", stages.run_analyze(
@@ -277,7 +351,9 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
             vault_dir=vault_dir, cache_dir=cache_dir, prompts_dir=prompts_dir,
             model=args.model,
         ))
-        r3, _ = _step("warehouse", stages.run_warehouse(all_events_paths, db_path, run_id))
+        r3, _ = _step("warehouse", stages.run_warehouse(
+            all_events_paths, db_path, run_id, vault_dir=vault_dir,
+        ))
         r4, signals = _step("analyze", stages.run_analyze(
             project_id, db_path, events_path, run_id, schemas_dir,
             project_dir=project_dir,

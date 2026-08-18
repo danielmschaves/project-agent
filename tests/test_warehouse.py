@@ -620,3 +620,128 @@ def test_views_hide_events_superseded_by_a_later_event(
         db_path, f"SELECT superseded_by FROM events_full WHERE event_id = '{old.event_id}'"
     )
     assert linked[0]["superseded_by"] == new.event_id
+
+
+# ---------------------------------------------------------------------------
+# The vault as a queryable surface (v2.0)
+# ---------------------------------------------------------------------------
+
+def _seed_vault(tmp_path: Path) -> Path:
+    """A small two-project vault with a shared person."""
+    from project_agent import wiki
+
+    vault = tmp_path / "kb"
+    for sub in ("projects", "people", "clients", "concepts", "_registry"):
+        (vault / sub).mkdir(parents=True, exist_ok=True)
+    (vault / "_registry" / "people.yml").write_text(
+        "bob-kim:\n  name: Bob Kim\n", encoding="utf-8"
+    )
+
+    risk = wiki.Article(
+        path=Path("projects/acme--one/risks/redis-spof.md"),
+        title="Redis single point of failure",
+        type="risk", project="acme--one", tags=["risk"],
+        event_ids=["evt-1"],
+        body="# Redis single point of failure\n\nRate limiting depends on redis.\n"
+             "**Owner:** [[kb/people/bob-kim|Bob Kim]]\n",
+    )
+    index = wiki.Article(
+        path=Path("projects/acme--one/index.md"), title="acme--one", type="project",
+        project="acme--one", body=f"# acme--one\n\n- {wiki.wikilink(risk.path, risk.title)}\n",
+    )
+    person = wiki.Article(
+        path=Path("people/bob-kim.md"), title="Bob Kim", type="person", body="# Bob Kim\n",
+    )
+    dangling = wiki.Article(
+        path=Path("projects/acme--one/decisions/use-kong.md"), title="Use Kong",
+        type="decision", project="acme--one",
+        body="# Use Kong\n\nSee [[kb/concepts/api-gateway|API gateway]].\n",
+    )
+    for article in (risk, index, person, dangling):
+        wiki.write_article(vault, article)
+    return vault
+
+
+@pytest.mark.integration
+def test_load_wiki_indexes_every_article(tmp_path: Path, db_path: Path) -> None:
+    vault = _seed_vault(tmp_path)
+    assert warehouse.load_wiki(vault, db_path) == 4
+
+    rows = warehouse.query(db_path, "SELECT type, count(*) AS n FROM documents GROUP BY 1 ORDER BY 1")
+    assert rows == [
+        {"type": "decision", "n": 1},
+        {"type": "person", "n": 1},
+        {"type": "project", "n": 1},
+        {"type": "risk", "n": 1},
+    ]
+
+
+@pytest.mark.integration
+def test_backlinks_view_resolves_wikilinks(tmp_path: Path, db_path: Path) -> None:
+    warehouse.load_wiki(_seed_vault(tmp_path), db_path)
+    rows = warehouse.query(
+        db_path, "SELECT linked_from FROM backlinks WHERE path = 'people/bob-kim.md'"
+    )
+    assert rows == [{"linked_from": "projects/acme--one/risks/redis-spof.md"}]
+
+
+@pytest.mark.integration
+def test_broken_links_view_finds_links_to_nothing(tmp_path: Path, db_path: Path) -> None:
+    warehouse.load_wiki(_seed_vault(tmp_path), db_path)
+    rows = warehouse.query(db_path, "SELECT target_raw FROM broken_links")
+    assert rows == [{"target_raw": "kb/concepts/api-gateway"}]
+
+
+@pytest.mark.integration
+def test_documents_join_back_to_the_event_log(tmp_path: Path, db_path: Path) -> None:
+    """The point of the whole index: article -> the raw source behind it."""
+    log = tmp_path / "events.ndjson"
+    event = _project_event("acme--one", "sha256:a1")
+    event.event_id = "evt-1"
+    events_api.append(event, log)
+
+    warehouse.load(log, db_path)
+    warehouse.load_wiki(_seed_vault(tmp_path), db_path)
+
+    rows = warehouse.query(
+        db_path,
+        "SELECT path, source_ref FROM document_provenance WHERE event_id = 'evt-1'",
+    )
+    assert rows == [
+        {"path": "projects/acme--one/risks/redis-spof.md", "source_ref": "raw/docs/doc.md"}
+    ]
+
+
+@pytest.mark.integration
+def test_search_ranks_title_matches_highest(tmp_path: Path, db_path: Path) -> None:
+    warehouse.load_wiki(_seed_vault(tmp_path), db_path)
+    hits = warehouse.search(db_path, "redis", limit=5)
+    assert hits[0]["path"] == "projects/acme--one/risks/redis-spof.md"
+
+
+@pytest.mark.integration
+def test_search_requires_every_term(tmp_path: Path, db_path: Path) -> None:
+    warehouse.load_wiki(_seed_vault(tmp_path), db_path)
+    assert warehouse.search(db_path, "redis kubernetes") == []
+
+
+@pytest.mark.integration
+def test_search_empty_query_returns_nothing(tmp_path: Path, db_path: Path) -> None:
+    warehouse.load_wiki(_seed_vault(tmp_path), db_path)
+    assert warehouse.search(db_path, "   ") == []
+
+
+@pytest.mark.integration
+def test_search_is_case_insensitive(tmp_path: Path, db_path: Path) -> None:
+    warehouse.load_wiki(_seed_vault(tmp_path), db_path)
+    assert warehouse.search(db_path, "REDIS") == warehouse.search(db_path, "redis")
+
+
+@pytest.mark.idempotence
+def test_load_wiki_twice_is_stable(tmp_path: Path, db_path: Path) -> None:
+    vault = _seed_vault(tmp_path)
+    warehouse.load_wiki(vault, db_path)
+    first = warehouse.query(db_path, "SELECT path FROM documents ORDER BY path")
+    warehouse.load_wiki(vault, db_path)
+    second = warehouse.query(db_path, "SELECT path FROM documents ORDER BY path")
+    assert first == second

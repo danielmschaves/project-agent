@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -241,3 +242,192 @@ def _create_views(con: duckdb.DuckDBPyConnection) -> None:
         FROM events_raw
         WHERE type = 'milestone_added'
     """)
+
+
+# ---------------------------------------------------------------------------
+# The vault as a queryable surface (v2.0)
+# ---------------------------------------------------------------------------
+
+_CREATE_WIKI_TABLES = """
+CREATE OR REPLACE TABLE documents (
+    path            VARCHAR,
+    title           VARCHAR,
+    type            VARCHAR,
+    project         VARCHAR,
+    compiled_by     VARCHAR,
+    compiled_from   VARCHAR,
+    schema_version  INTEGER,
+    body            VARCHAR,
+    word_count      INTEGER
+);
+CREATE OR REPLACE TABLE document_tags (
+    path VARCHAR,
+    tag  VARCHAR
+);
+CREATE OR REPLACE TABLE document_events (
+    path     VARCHAR,
+    event_id VARCHAR
+);
+CREATE OR REPLACE TABLE links (
+    source_path VARCHAR,
+    target_path VARCHAR,
+    target_raw  VARCHAR
+);
+"""
+
+
+def load_wiki(vault_dir: Path, db_path: Path) -> int:
+    """Index the compiled wiki into DuckDB alongside the event log.
+
+    Articles are parsed with `wiki.read_article` rather than DuckDB's
+    `read_text`, so the front-matter contract has exactly one parser. The
+    tables land in the same database as `events_raw`, and `document_events`
+    carries each article's event ids — which is what makes "the raw email
+    behind this risk" a single join rather than a manual hunt.
+
+    File mtimes are deliberately not stored: they change on every checkout and
+    would make query results non-reproducible.
+    """
+    from project_agent import wiki  # local import: wiki imports llm, warehouse does not
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    articles = [
+        wiki.read_article(vault_dir, p.relative_to(vault_dir))
+        for p in sorted(vault_dir.rglob("*.md"))
+    ]
+
+    con = duckdb.connect(str(db_path))
+    try:
+        con.execute(_CREATE_WIKI_TABLES)
+
+        if articles:
+            con.executemany(
+                "INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?)",
+                [
+                    (
+                        a.path.as_posix(), a.title, a.type, a.project,
+                        a.compiled_by, a.compiled_from, a.schema_version,
+                        a.body, len(a.body.split()),
+                    )
+                    for a in articles
+                ],
+            )
+            tags = [(a.path.as_posix(), tag) for a in articles for tag in sorted(a.tags)]
+            if tags:
+                con.executemany("INSERT INTO document_tags VALUES (?,?)", tags)
+            refs = [
+                (a.path.as_posix(), eid) for a in articles for eid in sorted(a.event_ids)
+            ]
+            if refs:
+                con.executemany("INSERT INTO document_events VALUES (?,?)", refs)
+
+            edges = [
+                (a.path.as_posix(), _normalize_link(target), target)
+                for a in articles
+                for target in wiki.parse_wikilinks(a.body)
+            ]
+            if edges:
+                con.executemany("INSERT INTO links VALUES (?,?,?)", edges)
+
+        _create_wiki_views(con)
+    finally:
+        con.close()
+
+    logger.info("Wiki indexed: %d articles", len(articles))
+    return len(articles)
+
+
+def _normalize_link(target: str) -> str:
+    """Turn a wikilink target into a documents.path.
+
+    Links are vault-absolute and extension-less (`kb/people/bob-kim`); paths
+    are vault-relative with the extension (`people/bob-kim.md`).
+    """
+    cleaned = target.strip().removeprefix("kb/")
+    return cleaned if cleaned.endswith(".md") else f"{cleaned}.md"
+
+
+def _create_wiki_views(con: duckdb.DuckDBPyConnection) -> None:
+    con.execute("""
+        CREATE OR REPLACE VIEW backlinks AS
+        SELECT d.path AS path, l.source_path AS linked_from
+        FROM links l
+        JOIN documents d ON d.path = l.target_path
+    """)
+    # A link pointing at nothing — the lint's primary signal that the vault
+    # has drifted from what the compiler actually produced.
+    con.execute("""
+        CREATE OR REPLACE VIEW broken_links AS
+        SELECT l.source_path, l.target_raw
+        FROM links l
+        LEFT JOIN documents d ON d.path = l.target_path
+        WHERE d.path IS NULL
+    """)
+    con.execute("""
+        CREATE OR REPLACE VIEW orphan_documents AS
+        SELECT d.path, d.type, d.project
+        FROM documents d
+        LEFT JOIN links l ON l.target_path = d.path
+        WHERE l.target_path IS NULL AND d.type <> 'index'
+    """)
+    # Article -> the events it was compiled from, joined through to the log.
+    # Skipped when the vault is indexed into a database that has no event log
+    # yet; the next full run creates it.
+    has_events = con.execute(
+        "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'events_raw'"
+    ).fetchone()
+    if has_events and has_events[0]:
+        con.execute("""
+            CREATE OR REPLACE VIEW document_provenance AS
+            SELECT de.path, e.event_id, e.type, e.source_ref, e.ts
+            FROM document_events de
+            JOIN events_raw e ON e.event_id = de.event_id
+        """)
+
+
+def search(db_path: Path, query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Rank vault articles against a free-text query.
+
+    A deliberately naive scorer — term frequency with the title weighted — run
+    in SQL over the `documents` table. DuckDB's `fts` extension would give
+    proper BM25, but it is a downloadable extension and the pipeline has to
+    work on a machine that cannot reach extensions.duckdb.org. At vault scale
+    the difference is not worth the dependency; swapping in `match_bm25` later
+    only changes this function.
+    """
+    terms = [t for t in re.findall(r"[\w']+", query.casefold()) if t]
+    if not terms:
+        return []
+
+    def occurrences(column: str, index: int) -> str:
+        # (len - len without the term) / len(term) == number of occurrences
+        return (
+            f"(length(lower({column})) - length(replace(lower({column}), ${index}, ''))) "
+            f"/ length(${index})"
+        )
+
+    score_parts: list[str] = []
+    where_parts: list[str] = []
+    params: list[Any] = []
+    for i, term in enumerate(terms, start=1):
+        params.append(term)
+        score_parts.append(f"3 * {occurrences('title', i)} + {occurrences('body', i)}")
+        where_parts.append(f"(lower(title) LIKE '%' || ${i} || '%' OR lower(body) LIKE '%' || ${i} || '%')")
+
+    params.append(limit)
+    sql = f"""
+        SELECT path, title, type, project,
+               {' + '.join(score_parts)} AS score
+        FROM documents
+        WHERE {' AND '.join(where_parts)}
+        ORDER BY score DESC, path ASC
+        LIMIT ${len(params)}
+    """
+
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        rel = con.execute(sql, params)
+        cols = [d[0] for d in rel.description]
+        return [dict(zip(cols, row)) for row in rel.fetchall()]
+    finally:
+        con.close()
