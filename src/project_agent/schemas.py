@@ -125,6 +125,27 @@ class SignalDetectedPayload(BaseModel):
     recommended_action: str
 
 
+class SourceSummarizedPayload(BaseModel):
+    """A research document condensed into the log (v2.0, research lane).
+
+    The summary lives here rather than only in the article so the wiki stays a
+    projection of the event log — a re-compile must not need the LLM again.
+    """
+
+    type: Literal["source_summarized"]
+    summary: str
+    topics: list[str] = Field(default_factory=list)
+
+
+class ConceptAddedPayload(BaseModel):
+    """A concept extracted from a research document."""
+
+    type: Literal["concept_added"]
+    slug: str
+    name: str
+    description: str | None = None
+
+
 class EventRetractedPayload(BaseModel):
     type: Literal["event_retracted"]
     retracted_event_id: str
@@ -142,6 +163,8 @@ Payload = Annotated[
     | MilestoneAddedPayload
     | PipelineHealthPayload
     | SignalDetectedPayload
+    | SourceSummarizedPayload
+    | ConceptAddedPayload
     | EventRetractedPayload,
     Field(discriminator="type"),
 ]

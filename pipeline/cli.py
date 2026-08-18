@@ -83,6 +83,16 @@ def main() -> None:
     sql_p.add_argument("--data-dir", default="data",
                        help="Data directory holding warehouse.duckdb (default: data/)")
 
+    res_p = sub.add_parser("research", help="Ingest and compile the research corpus")
+    res_p.add_argument("--research-dir", default="research",
+                       help="Research lane root (default: research/)")
+    res_p.add_argument("--vault-dir", default="kb",
+                       help="Obsidian vault holding the compiled wiki (default: kb/)")
+    res_p.add_argument("--data-dir", default="data",
+                       help="Data directory for the LLM cache (default: data/)")
+    res_p.add_argument("--model", default="claude-sonnet-4-6", metavar="MODEL",
+                       help="Claude model for summarization (default: claude-sonnet-4-6)")
+
     lint_p = sub.add_parser("lint", help="Health-check the compiled wiki")
     lint_p.add_argument("--vault-dir", default="kb",
                         help="Obsidian vault holding the compiled wiki (default: kb/)")
@@ -110,6 +120,44 @@ def main() -> None:
         sys.exit(_cmd_wiki_sql(args))
     elif args.command == "lint":
         sys.exit(_cmd_lint(args))
+    elif args.command == "research":
+        sys.exit(_cmd_research(args))
+
+
+def _cmd_research(args: argparse.Namespace) -> int:
+    """Ingest and compile the research corpus, then refresh the shared layer."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("ERROR: ANTHROPIC_API_KEY is not set", file=sys.stderr)
+        return 1
+
+    research_dir = Path(args.research_dir)
+    if not research_dir.exists():
+        print(f"ERROR: no research lane at {research_dir}", file=sys.stderr)
+        return 1
+
+    vault_dir = Path(args.vault_dir)
+    events_path = research_dir / "events.ndjson"
+    events_path.touch()
+    cache_dir = Path(args.data_dir) / "cache" / "llm"
+    run_id = uuid.uuid4().hex[:8]
+
+    print(f"[{run_id}] Research corpus")
+    result = stages.run_research(
+        research_dir, events_path, run_id, vault_dir,
+        cache_dir=cache_dir, model=args.model,
+    )
+    status = "✓" if result.status == "ok" else f"✗ {result.status}"
+    print(f"  {'research':12s} {status}  {result.counts}")
+
+    # Concepts are shared with the project lane, so Phase B has to run again.
+    shared = stages.run_compile_shared(
+        vault_dir, cache_dir=cache_dir, model=args.model,
+        research_events_path=events_path,
+    )
+    status = "✓" if shared.status == "ok" else f"✗ {shared.status}"
+    print(f"  {'shared':12s} {status}  {shared.counts}")
+
+    return 0 if result.counts.get("errors", 0) == 0 else 1
 
 
 def _cmd_lint(args: argparse.Namespace) -> int:
@@ -491,6 +539,7 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
     # Stage 2b Phase B — the shared layer, once every project is compiled
     shared = stages.run_compile_shared(
         vault_dir, cache_dir=cache_dir, prompts_dir=prompts_dir, model=args.model,
+        research_events_path=Path("research") / "events.ndjson",
     )
     status_str = "✓" if shared.status == "ok" else f"✗ {shared.status}"
     print(f"\n  {'shared':12s} {status_str}  {shared.counts}")

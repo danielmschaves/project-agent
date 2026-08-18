@@ -27,6 +27,8 @@ from project_agent.schemas import (
     Signal,
     SignalDetectedPayload,
     SourceIngestedPayload,
+    SourceSummarizedPayload,
+    ConceptAddedPayload,
     StageResult,
 )
 from project_agent.signals import deterministic
@@ -443,6 +445,7 @@ def run_compile_shared(
     config_dir: Path | None = None,
     llm_client: Any = None,
     prose_enabled: bool = True,
+    research_events_path: Path | None = None,
 ) -> StageResult:
     """Phase B — compile the shared layer once, after every project.
 
@@ -465,7 +468,12 @@ def run_compile_shared(
                 budget=wiki.ProseBudget(limit_usd=_load_llm_budget(config_dir or Path("config"))),
                 client=llm_client,
             )
-        articles = wiki.compile_shared(vault_dir, registries, prose)
+        extra_concepts: dict[str, wiki.ConceptRef] = {}
+        if research_events_path is not None and research_events_path.exists():
+            extra_concepts = wiki.research_concepts(
+                events_api.query(research_events_path, project_id=wiki.RESEARCH_ID)
+            )
+        articles = wiki.compile_shared(vault_dir, registries, prose, extra_concepts)
         for article in articles:
             if wiki.write_article(vault_dir, article):
                 written += 1
@@ -501,6 +509,182 @@ def run_compile_shared(
         cost_usd=(prose.budget.spent_usd if prose and prose.budget.spent_usd else None),
     )
 
+
+# ---------------------------------------------------------------------------
+# Research lane (v2.0) — ingest + summarize + compile, sharing the concept layer
+# ---------------------------------------------------------------------------
+
+def run_research(
+    research_dir: Path,
+    events_path: Path,
+    run_id: str,
+    vault_dir: Path,
+    cache_dir: Path | None = None,
+    prompts_dir: Path | None = None,
+    model: str = "claude-sonnet-4-6",
+    client: Any = None,
+) -> StageResult:
+    """Ingest, summarize and compile the research corpus.
+
+    Runs the same file-drop ingest as a project — drop clippings into
+    research/raw/_inbox/ — but a different parse prompt and its own event
+    types. Research documents are deliberately never passed to the project
+    signal detectors: a paper is not a delivery risk.
+    """
+    start = time.monotonic()
+    if cache_dir is None:
+        cache_dir = Path("data/cache/llm")
+    if prompts_dir is None:
+        prompts_dir = Path("prompts")
+
+    prompt_name = "summarize-research"
+    sources_new = 0
+    sources_parsed = 0
+    concepts_found = 0
+    articles_written = 0
+    errors = 0
+
+    try:
+        for result in inbox.scan_inbox(research_dir):
+            payload = SourceIngestedPayload(
+                type="source_ingested",
+                filename=result.filename,
+                source_type=result.source_type,
+                size_bytes=result.size_bytes,
+                sender=result.sender,
+            )
+            events_api.append(
+                Event(
+                    event_id=str(uuid.uuid4()),
+                    ts=datetime.now(tz=timezone.utc),
+                    run_id=run_id,
+                    project_id=wiki.RESEARCH_ID,
+                    type="source_ingested",
+                    actor=DeterministicActor(kind="deterministic", detector="inbox"),
+                    source_ref=result.source_ref,
+                    source_hash=result.source_hash,
+                    payload=payload,
+                    hash=events_api.hash_event(payload.model_dump(), result.source_hash),
+                ),
+                events_path,
+            )
+            sources_new += 1
+
+        manifest_path = research_dir / "raw" / "parse_manifest.json"
+        manifest = _load_parse_manifest(manifest_path)
+        prompt_version = llm.load_prompt(prompt_name, prompts_dir).version
+        key_suffix = f"{prompt_name}@{prompt_version}"
+
+        for src in events_api.query(
+            events_path, project_id=wiki.RESEARCH_ID, types=["source_ingested"]
+        ):
+            key = f"{src.source_hash}:{key_suffix}"
+            if key in manifest:
+                continue
+            source_file = research_dir / src.source_ref
+            if not source_file.exists():
+                logger.warning("Research source missing: %s", source_file)
+                errors += 1
+                continue
+
+            result_json = llm.extract(
+                prompt_name=prompt_name,
+                source_text=source_file.read_text(encoding="utf-8", errors="replace"),
+                source_hash=src.source_hash,
+                model=model,
+                cache_dir=cache_dir,
+                prompts_dir=prompts_dir,
+                client=client,
+            )
+            emitted = _emit_research_events(
+                result_json, src, run_id, model, prompt_name, prompt_version, events_path
+            )
+            concepts_found += emitted - 1
+            manifest[key] = []
+            _save_parse_manifest(manifest_path, manifest)
+            sources_parsed += 1
+
+        events = events_api.query(events_path, project_id=wiki.RESEARCH_ID)
+        registries = wiki.Registries.load(vault_dir)
+        articles = wiki.compile_research(vault_dir, events, registries)
+        for article in articles:
+            if wiki.write_article(vault_dir, article):
+                articles_written += 1
+        wiki.prune(vault_dir, Path("research"), {a.path for a in articles})
+
+    except Exception:
+        logger.exception("Research stage failed")
+        elapsed = int((time.monotonic() - start) * 1000)
+        return StageResult(
+            name="research",
+            status="error",
+            duration_ms=elapsed,
+            counts={"sources_new": sources_new, "errors": 1},
+            error="See logs for details",
+        )
+
+    elapsed = int((time.monotonic() - start) * 1000)
+    return StageResult(
+        name="research",
+        status="ok",
+        duration_ms=elapsed,
+        counts={
+            "sources_new": sources_new,
+            "sources_parsed": sources_parsed,
+            "concepts_found": concepts_found,
+            "articles_written": articles_written,
+            "errors": errors,
+        },
+    )
+
+
+def _emit_research_events(
+    result: dict[str, Any],
+    src: Event,
+    run_id: str,
+    model: str,
+    prompt_name: str,
+    prompt_version: int,
+    events_path: Path,
+) -> int:
+    """Append the summary and concept events for one research document."""
+    actor = LLMActor(kind="llm", model=model, prompt=f"{prompt_name}@{prompt_version}")
+
+    def _append(payload: Any) -> None:
+        events_api.append(
+            Event(
+                event_id=str(uuid.uuid4()),
+                ts=datetime.now(tz=timezone.utc),
+                run_id=run_id,
+                project_id=wiki.RESEARCH_ID,
+                type=payload.type,
+                actor=actor,
+                source_ref=src.source_ref,
+                source_hash=src.source_hash,
+                payload=payload,
+                hash=events_api.hash_event(payload.model_dump(), src.source_hash),
+            ),
+            events_path,
+        )
+
+    _append(SourceSummarizedPayload(
+        type="source_summarized",
+        summary=str(result.get("summary", "")),
+        topics=[str(t) for t in result.get("topics", [])],
+    ))
+    count = 1
+    for concept in result.get("concepts", []):
+        name = str(concept.get("name", "")).strip()
+        if not name:
+            continue
+        _append(ConceptAddedPayload(
+            type="concept_added",
+            slug=wiki.slugify(name, max_words=5),
+            name=name,
+            description=concept.get("description"),
+        ))
+        count += 1
+    return count
 
 # ---------------------------------------------------------------------------
 # Wiki lint (v2.0) — structural health checks over the vault
