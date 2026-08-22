@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from project_agent import events as events_api
-from project_agent import git, llm, projects, render, warehouse
+from project_agent import git, llm, projects, render, warehouse, wiki
 from project_agent.ingest import inbox, mcp as mcp_ingest
 from project_agent.render import PortfolioProject
 from project_agent.schemas import (
@@ -288,9 +288,6 @@ def run_parse(
             _save_parse_manifest(parse_manifest_path, parse_manifest)
             sources_parsed += 1
 
-        if all_facts:
-            projects.update_project(project_dir, all_facts)
-
     except Exception:
         logger.exception("Parse stage failed")
         elapsed = int((time.monotonic() - start) * 1000)
@@ -324,6 +321,131 @@ def run_parse(
             "sources_skipped": sources_skipped,
             "events_emitted": events_emitted,
             "errors": errors,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stage 2b — Compile (PRD §8.2b, v2.0): events -> the wiki
+# ---------------------------------------------------------------------------
+
+def run_compile(
+    project_id: str,
+    project_dir: Path,
+    events_path: Path,
+    run_id: str,
+    vault_dir: Path | None = None,
+) -> StageResult:
+    """Phase A — compile one project's articles from its event log.
+
+    Deterministic: articles are pure projections of events plus the PM's
+    declared metadata, so a re-run with no new events rewrites nothing.
+    Shared people/clients/concepts are left to run_compile_shared, which
+    runs once after every project has been compiled.
+    """
+    start = time.monotonic()
+    vault = vault_dir if vault_dir is not None else wiki.default_vault_dir(project_dir)
+    written = 0
+    unchanged = 0
+    removed = 0
+
+    try:
+        events = events_api.query(events_path, project_id=project_id)
+        metadata = projects.load_notes_metadata(project_dir)
+        registries = wiki.Registries.load(vault)
+
+        articles = wiki.compile_project(vault, project_id, events, metadata, registries)
+
+        manifest_path = project_dir / "raw" / "compile_manifest.json"
+        manifest: dict[str, wiki.CompileRecord] = {}
+        for article in articles:
+            if wiki.write_article(vault, article):
+                written += 1
+            else:
+                unchanged += 1
+            manifest[article.path.as_posix()] = wiki.CompileRecord(
+                input_hash=article.compiled_from,
+                compiled_by=article.compiled_by,
+                event_ids=sorted(article.event_ids),
+            )
+
+        keep = {a.path for a in articles}
+        removed = len(wiki.prune(vault, Path("projects") / project_id, keep))
+        wiki.save_compile_manifest(manifest_path, manifest)
+
+    except Exception:
+        logger.exception("Compile stage failed")
+        elapsed = int((time.monotonic() - start) * 1000)
+        return StageResult(
+            name="compile",
+            status="error",
+            duration_ms=elapsed,
+            counts={"articles_written": written, "errors": 1},
+            error="See logs for details",
+        )
+
+    elapsed = int((time.monotonic() - start) * 1000)
+    logger.info(
+        "Compile complete: %d written, %d unchanged, %d pruned (%dms)",
+        written, unchanged, removed, elapsed,
+    )
+    return StageResult(
+        name="compile",
+        status="ok",
+        duration_ms=elapsed,
+        counts={
+            "articles_written": written,
+            "articles_unchanged": unchanged,
+            "articles_pruned": removed,
+            "errors": 0,
+        },
+    )
+
+
+def run_compile_shared(vault_dir: Path) -> StageResult:
+    """Phase B — compile the shared layer once, after every project.
+
+    people/, clients/ and concepts/ fan in across projects, so they cannot be
+    written inside the per-project loop. A single-project run therefore leaves
+    them untouched; `pipeline portfolio` is the full compile.
+    """
+    start = time.monotonic()
+    written = 0
+    unchanged = 0
+
+    try:
+        registries = wiki.Registries.load(vault_dir)
+        articles = wiki.compile_shared(vault_dir, registries)
+        for article in articles:
+            if wiki.write_article(vault_dir, article):
+                written += 1
+            else:
+                unchanged += 1
+
+        keep = {a.path for a in articles}
+        for subtree in (Path("people"), Path("clients"), Path("concepts")):
+            wiki.prune(vault_dir, subtree, keep)
+
+    except Exception:
+        logger.exception("Shared compile stage failed")
+        elapsed = int((time.monotonic() - start) * 1000)
+        return StageResult(
+            name="compile_shared",
+            status="error",
+            duration_ms=elapsed,
+            counts={"articles_written": written, "errors": 1},
+            error="See logs for details",
+        )
+
+    elapsed = int((time.monotonic() - start) * 1000)
+    return StageResult(
+        name="compile_shared",
+        status="ok",
+        duration_ms=elapsed,
+        counts={
+            "articles_written": written,
+            "articles_unchanged": unchanged,
+            "errors": 0,
         },
     )
 
@@ -458,6 +580,7 @@ def run_analyze(
     model: str = "claude-sonnet-4-6",
     config_dir: Path | None = None,
     llm_client: Any = None,
+    vault_dir: Path | None = None,
 ) -> tuple[StageResult, list[Signal]]:
     """Stage 4 — deterministic + LLM signal detection (PRD §8.4, Phase 1).
 
@@ -488,10 +611,11 @@ def run_analyze(
     try:
         thresholds = _load_signal_thresholds(schemas_dir)
 
-        # Load stakeholder watchlist from project.md front-matter when available
+        # Stakeholder watchlist: declared in project.notes.md front-matter and
+        # carried into the wiki index article by the compile stage.
         if project_dir is not None:
             try:
-                project_data = projects.load_project(project_dir)
+                project_data = projects.load_project(project_dir, vault_dir)
                 raw_stakeholders = project_data.get("metadata", {}).get("stakeholders", [])
                 watchlist = [
                     s for s in (raw_stakeholders or [])
@@ -502,7 +626,10 @@ def run_analyze(
                     "watchlist": watchlist,
                 }
             except Exception:
-                logger.warning("Could not load stakeholder config from project.md — skipping stakeholder_inactivity")
+                logger.warning(
+                    "Could not load stakeholder config from the wiki index "
+                    "— skipping stakeholder_inactivity"
+                )
 
         # Dedup key: source_hash encodes signal_type + sorted evidence, stable across runs
         seen_source_hashes = {
@@ -670,12 +797,16 @@ def run_render(
     signals: list[Signal],
     run_id: str,
     design_system_dir: Path | None = None,
+    vault_dir: Path | None = None,
 ) -> StageResult:
     """Stage 5 — render MD + HTML status reports (PRD §8.5, Phase 0.5)."""
     start = time.monotonic()
     try:
-        render.render_status(project_dir, signals, run_id)
-        render.render_html(project_dir, signals, run_id, design_system_dir=design_system_dir)
+        render.render_status(project_dir, signals, run_id, vault_dir=vault_dir)
+        render.render_html(
+            project_dir, signals, run_id,
+            design_system_dir=design_system_dir, vault_dir=vault_dir,
+        )
         logger.info("Render complete: %s (MD + HTML)", project_id)
     except Exception:
         logger.exception("Render stage failed")
@@ -771,7 +902,6 @@ def run_commit(
         )
         git.commit_all(repo_root, commit_msg, force_paths=[
             project_dir / "events.ndjson",
-            project_dir / "project.md",
             project_dir / "reports",
             project_dir / "raw" / "manifest.json",
             project_dir / "raw" / "parse_manifest.json",
@@ -854,7 +984,6 @@ def run_commit_portfolio(
             pd = projects_root / pid
             force += [
                 pd / "events.ndjson",
-                pd / "project.md",
                 pd / "reports",
                 pd / "raw" / "manifest.json",
                 pd / "raw" / "parse_manifest.json",

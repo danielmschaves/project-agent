@@ -2,27 +2,51 @@ from pathlib import Path
 
 import pytest
 
+PROJECT_ID = "test--project"
+
 
 @pytest.fixture
 def project_dir(tmp_path: Path) -> Path:
-    """Minimal project directory tree for tests."""
+    """A realistic project tree.
+
+    Laid out as <root>/projects/<id> with the vault at <root>/kb, because the
+    compiler resolves one from the other (wiki.default_vault_dir). A flat
+    tmp_path would put the vault outside the tree.
+    """
+    root = tmp_path
+    pdir = root / "projects" / PROJECT_ID
     for subdir in [
         "raw/_inbox",
         "raw/emails",
         "raw/docs",
         "raw/backlog",
         "raw/meetings",
-        "derived",
         "reports",
     ]:
-        (tmp_path / subdir).mkdir(parents=True)
+        (pdir / subdir).mkdir(parents=True)
 
-    (tmp_path / "project.md").write_text(
-        "---\nid: test--project\nstatus: green\n---\n\n## Mission\nTest project.\n"
+    (pdir / "project.notes.md").write_text(
+        f"---\nid: {PROJECT_ID}\nstatus: green\n---\n\n# PM Notes\n", encoding="utf-8"
     )
-    (tmp_path / "project.notes.md").write_text("# PM Notes\n")
-    (tmp_path / "raw" / "manifest.json").write_text("{}")
-    return tmp_path
+    (pdir / "raw" / "manifest.json").write_text("{}", encoding="utf-8")
+
+    _make_vault(root)
+    (root / "kb" / "projects" / PROJECT_ID).mkdir(parents=True)
+    (root / "kb" / "projects" / PROJECT_ID / "index.md").write_text(
+        f"---\nid: {PROJECT_ID}\nstatus: green\ntitle: Test Project\ntype: project\n---\n\n"
+        "## Mission\n\nTest project.\n",
+        encoding="utf-8",
+    )
+    return pdir
+
+
+def _make_vault(root: Path) -> Path:
+    vault = root / "kb"
+    for subdir in ["projects", "people", "clients", "concepts", "outputs", "_registry"]:
+        (vault / subdir).mkdir(parents=True, exist_ok=True)
+    for registry in ["people", "clients", "concepts"]:
+        (vault / "_registry" / f"{registry}.yml").write_text("{}\n", encoding="utf-8")
+    return vault
 
 
 @pytest.fixture
@@ -46,9 +70,4 @@ def raw_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def vault_dir(tmp_path: Path) -> Path:
     """Empty kb/ vault skeleton with its entity registry."""
-    root = tmp_path / "kb"
-    for subdir in ["projects", "people", "clients", "concepts", "outputs", "_registry"]:
-        (root / subdir).mkdir(parents=True)
-    for registry in ["people", "clients", "concepts"]:
-        (root / "_registry" / f"{registry}.yml").write_text("{}\n", encoding="utf-8")
-    return root
+    return _make_vault(tmp_path)

@@ -84,13 +84,34 @@ def demo_project(tmp_path: Path) -> tuple[Path, Path, Path, Path, Path]:
     Uses unowned_hours=0 and stale_days=0 so signals fire immediately in
     tests (real thresholds are tested by unit tests in test_signals_deterministic.py).
     """
-    project_dir = tmp_path / "demo--sample-2026"
+    project_dir = tmp_path / "projects" / "demo--sample-2026"
     shutil.copytree(str(_DEMO_SRC), str(project_dir))
 
     # Remove any pre-existing reports so the test starts clean
     reports_dir = project_dir / "reports"
     if reports_dir.exists():
         shutil.rmtree(str(reports_dir))
+
+    # The committed demo has its documents already sorted into typed folders,
+    # because ingest moved them there and _inbox/ is transient. Put them back
+    # so the run actually exercises ingest instead of finding nothing to do.
+    inbox = project_dir / "raw" / "_inbox"
+    inbox.mkdir(parents=True, exist_ok=True)
+    for folder in ("emails", "docs", "backlog", "meetings"):
+        typed = project_dir / "raw" / folder
+        if not typed.exists():
+            continue
+        for item in typed.iterdir():
+            if item.is_file():
+                item.rename(inbox / item.name)
+    (project_dir / "raw" / "manifest.json").write_text("{}", encoding="utf-8")
+
+    # The vault sits beside projects/, which is how the compiler resolves it.
+    vault_dir = tmp_path / "kb"
+    for subdir in ("projects", "people", "clients", "concepts", "_registry"):
+        (vault_dir / subdir).mkdir(parents=True, exist_ok=True)
+    for registry in ("people", "clients", "concepts"):
+        (vault_dir / "_registry" / f"{registry}.yml").write_text("{}\n", encoding="utf-8")
 
     events_path = project_dir / "events.ndjson"
     events_path.touch()
@@ -128,6 +149,7 @@ def _run_full_pipeline(
 
     stages.run_ingest("demo--sample-2026", project_dir, events_path, run_id)
     stages.run_parse("demo--sample-2026", project_dir, events_path, cache_dir, prompts_dir, run_id, client=fake_client)
+    stages.run_compile("demo--sample-2026", project_dir, events_path, run_id)
     stages.run_warehouse(events_path, db_path, run_id)
     _, signals = stages.run_analyze(
         "demo--sample-2026", db_path, events_path, run_id, schemas_dir,
@@ -136,6 +158,7 @@ def _run_full_pipeline(
         config_dir=config_dir,
     )
     stages.run_render("demo--sample-2026", project_dir, signals or [], run_id)
+    stages.run_compile_shared(project_dir.parent.parent / "kb")
 
     return stages, signals or []
 
@@ -228,12 +251,13 @@ def test_e2e_status_report_created(demo_project: tuple) -> None:
 
 
 @pytest.mark.integration
-def test_e2e_project_md_updated(demo_project: tuple) -> None:
+def test_e2e_wiki_index_compiled(demo_project: tuple) -> None:
     project_dir, events_path, db_path, cache_dir, schemas_dir = demo_project
 
     _run_full_pipeline(project_dir, events_path, db_path, cache_dir, schemas_dir, "run-001", _make_fake_client())
 
-    content = (project_dir / "project.md").read_text(encoding="utf-8")
+    from project_agent import projects as _projects
+    content = _projects.index_path(project_dir).read_text(encoding="utf-8")
     assert "## Actions" in content
     assert "## Blockers" in content
     # At least one action description from the fake response
@@ -272,17 +296,19 @@ def test_e2e_second_run_no_new_source_events(demo_project: tuple) -> None:
 
 
 @pytest.mark.idempotence
-def test_e2e_second_run_project_md_unchanged(demo_project: tuple) -> None:
+def test_e2e_second_run_wiki_unchanged(demo_project: tuple) -> None:
     project_dir, events_path, db_path, cache_dir, schemas_dir = demo_project
     client = _make_fake_client()
 
     _run_full_pipeline(project_dir, events_path, db_path, cache_dir, schemas_dir, "run-001", client)
-    project_md_after_first = (project_dir / "project.md").read_text(encoding="utf-8")
+    vault = project_dir.parent.parent / "kb"
+    first = {p: p.read_text(encoding="utf-8") for p in sorted(vault.rglob("*.md"))}
 
     _run_full_pipeline(project_dir, events_path, db_path, cache_dir, schemas_dir, "run-002", client)
-    project_md_after_second = (project_dir / "project.md").read_text(encoding="utf-8")
+    second = {p: p.read_text(encoding="utf-8") for p in sorted(vault.rglob("*.md"))}
 
-    assert project_md_after_first == project_md_after_second
+    assert first == second, "second run changed the vault"
+    assert first, "no articles were compiled"
 
 
 @pytest.mark.idempotence
@@ -294,6 +320,7 @@ def test_e2e_second_run_zero_new_signals(demo_project: tuple) -> None:
 
     stages.run_ingest("demo--sample-2026", project_dir, events_path, "run-001")
     stages.run_parse("demo--sample-2026", project_dir, events_path, cache_dir, prompts_dir, "run-001", client=client)
+    stages.run_compile("demo--sample-2026", project_dir, events_path, "run-001")
     stages.run_warehouse(events_path, db_path, "run-001")
     r1, _ = stages.run_analyze("demo--sample-2026", db_path, events_path, "run-001", schemas_dir)
     assert r1.counts["signals_new"] >= 3

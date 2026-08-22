@@ -80,7 +80,7 @@ If you forget everything else, remember these.
 Anything in `pipeline/`, `agents/`, or anywhere else may **not**:
 - Open `data/events.ndjson` directly → use `project_agent.events`
 - Open a DuckDB connection directly → use `project_agent.warehouse`
-- Edit `project.md` directly → use `project_agent.projects`
+- Write into `kb/` directly → use `project_agent.wiki`
 - Call `anthropic.*` directly → use `project_agent.llm`
 - Shell out to `git` for state changes → use `project_agent.git`
 
@@ -98,24 +98,41 @@ The lint is not airtight (misses `importlib`, transitive imports, re-exports —
 
 ### 3. The LLM Cache is the Idempotence Backbone (PRD §6.2)
 
-Every call to `project_agent.llm.extract` (and any other LLM call in the parse path) is cached in `data/cache/llm/`, keyed on `(prompt_version, source_hash, model)`. Cache hits replay byte-identical responses, making re-runs zero-diff.
+Every call to `project_agent.llm.extract` (and any other LLM call in the parse path) is cached in `data/cache/llm/`, keyed on `(prompt_name, prompt_version, source_hash, model)`. Cache hits replay byte-identical responses, making re-runs zero-diff.
 
 - **Never** call `anthropic.*` from inside the package without routing through the cache wrapper.
 - **Never** mutate cached responses. To re-parse under new instructions, bump the prompt `version` field. Old events get superseded via the `supersedes` chain.
 - If a cache key collides with stale content, invalidate by bumping prompt version — not by deleting cache files.
 
-### 4. `project.md` is Bot-Owned; `project.notes.md` is PM-Owned (PRD §6.1)
+### 4. `kb/` is Bot-Owned; `project.notes.md` is PM-Owned (PRD §6.1)
 
-The pipeline **rewrites `project.md` on every run**. It **never writes to `project.notes.md`**.
+**`project.md` no longer exists (v2.0).** A project's state is the compiled wiki at
+`kb/projects/<id>/`, written by the Compile stage on every run. The PM never edits it.
 
-- Modifying `project.notes.md` from any stage → **stop**, it's not the pipeline's surface.
-- Preserving PM-written content inside `project.md` (the old `<!-- pm:* -->` marker approach) → **stop**, that was removed in PRD v0.4. PM content goes in `project.notes.md`. The render stage composes both.
+- Writing to `kb/**` from outside `project_agent.wiki` → **stop**, it's a boundary violation
+  and the lint fails the build. Articles must stay reproducible from the event log.
+- Writing to `project.notes.md` from any stage → **stop**, it's PM-owned. Never.
+- The PM's declared metadata (`status`, `sponsor`, `phase`, `stakeholders`, …) lives in
+  `project.notes.md` front-matter. Compile copies it forward into the index article; the
+  prose below the front-matter is read only as an excerpt for reports.
+- `kb/_registry/*.yml` is also human-owned: the compiler reads it, never writes it.
+
+### 5. Compile is Deterministic (v2.0)
+
+An article's identity is its `input_hash` — the canonical JSON of the events feeding it.
+Same events → same hash → same bytes → zero diff on re-run. Two consequences:
+
+- **Never put a wall-clock timestamp in a compiled article.** Use values derived from
+  events, which are fixed once written. `datetime.now()` anywhere in the compile path is a bug.
+- **Only fact events are projected** (`wiki.PROJECTED_TYPES`). `signal_detected` is excluded
+  on purpose: Analyze runs *after* Compile and appends to the same log, so including signals
+  would make every second run rewrite the vault. It is also the anti-circularity rule.
 
 ---
 
 ## Architecture
 
-Six layers, each idempotent and independently testable:
+Seven layers, each idempotent and independently testable:
 
 ```
 ┌───────────────────────────────────────────────────────┐
@@ -127,7 +144,9 @@ Six layers, each idempotent and independently testable:
 ├───────────────────────────────────────────────────────┤
 │  3. Warehouse Load → NDJSON → DuckDB views            │
 ├───────────────────────────────────────────────────────┤
-│  2. Parse          → sources → project.md + events    │
+│  2b. Compile       → events → kb/ wiki articles       │
+├───────────────────────────────────────────────────────┤
+│  2. Parse          → raw sources → events             │
 ├───────────────────────────────────────────────────────┤
 │  1. Ingest         → file drops + MCP (both shipped)  │
 └───────────────────────────────────────────────────────┘
@@ -154,7 +173,8 @@ src/project_agent/
 ├── schemas.py          ← pydantic: Event, Signal, Project + discriminated unions
 ├── events.py           ← NDJSON append/query/dedupe
 ├── warehouse.py        ← DuckDB load/query
-├── projects.py         ← project.md parse/render
+├── wiki.py             ← articles, wikilinks, registry, events → kb/
+├── projects.py         ← reads the wiki index + PM front-matter
 ├── render.py           ← MD + HTML emitter (single-project + portfolio)
 ├── git.py              ← branch/PR helpers
 ├── llm.py              ← Claude API client + cache wrapper
@@ -261,7 +281,9 @@ Each signal has a JSON spec under `data/schemas/signals/<type>.json`. SQL detect
 
 ## Common Gotchas
 
-- **Editing `project.md` from a pipeline script.** Violates Rule 1. Use `project_agent.projects.update`.
+- **Writing an article from a pipeline script.** Violates Rule 1. Use `project_agent.wiki.write_article`.
+- **Calling `datetime.now()` in the compile path.** Breaks the zero-diff contract — see Rule 5.
+- **Emitting a relative wikilink.** Two projects may hold the same filename; links must be vault-absolute (`[[kb/...]]`).
 - **Writing to `project.notes.md` from any code.** PM-owned. Never.
 - **Calling `anthropic.*` without going through the LLM cache wrapper.** Silently breaks idempotence — tests pass once, fail next day on cron.
 - **Opening DuckDB in a stage function.** Violates Rule 1. Use `project_agent.warehouse.query`.

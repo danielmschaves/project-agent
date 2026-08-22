@@ -81,3 +81,41 @@ def test_no_direct_ndjson_access_in_pipeline_or_agents() -> None:
             violations.extend(_check_raw_ndjson(py_file))
 
     assert not violations, "Direct NDJSON access violations:\n" + "\n".join(violations)
+
+
+# ---------------------------------------------------------------------------
+# The wiki is package-owned too (v2.0)
+# ---------------------------------------------------------------------------
+
+_WRITE_CALLS = ("write_text(", "open(", "mkdir(", "unlink(", "rmtree(", "touch(")
+
+
+def _check_wiki_writes(py_file: Path) -> list[str]:
+    """Catch anything outside the package writing into the vault directly.
+
+    The wiki is the readable source of truth; if a stage can hand-edit an
+    article, articles stop being reproducible from the event log.
+    """
+    violations: list[str] = []
+    for lineno, line in enumerate(py_file.read_text(encoding="utf-8").splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        if '"kb' not in line and "'kb" not in line and "vault_dir /" not in line:
+            continue
+        if any(call in line for call in _WRITE_CALLS):
+            violations.append(
+                f"{py_file.relative_to(REPO_ROOT)}:{lineno} "
+                "direct write into the vault forbidden; use project_agent.wiki"
+            )
+    return violations
+
+
+@pytest.mark.boundary
+def test_no_direct_vault_writes_in_pipeline_or_agents() -> None:
+    violations: list[str] = []
+    for dirname in FORBIDDEN_DIRS:
+        for py_file in _python_files(dirname):
+            violations.extend(_check_wiki_writes(py_file))
+
+    assert not violations, "Direct vault write violations:\n" + "\n".join(violations)

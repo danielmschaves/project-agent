@@ -169,8 +169,11 @@ def test_discover_projects(tmp_path: Path) -> None:
 def test_cli_help(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify the CLI entry point is importable and --help works."""
     import subprocess as sp
+    import sys
+    # sys.executable, not bare "python": the latter is whatever is on PATH and
+    # generally has no project_agent installed.
     result = sp.run(
-        ["python", "-m", "pipeline", "--help"],
+        [sys.executable, "-m", "pipeline", "--help"],
         capture_output=True, text=True,
     )
     assert result.returncode == 0

@@ -1,3 +1,29 @@
+---
+id: demo--sample-2026
+client: demo
+project_name: Alpha API Platform
+status: amber
+phase: build
+sponsor: Alice Chen
+stakeholders:
+  - name: Bob Kim
+    role: Engineering lead
+    contact_email: bob.kim@example.com
+    cadence_days: 7
+  - name: Carol Davis
+    role: Security
+    contact_email: carol.davis@example.com
+    cadence_days: 14
+  - name: Dave Park
+    role: Partner A
+    contact_email: dave.park@partnerA.com
+    cadence_days: 10
+  - name: Partner B Integration
+    role: Partner B
+    contact_email: integration@partnerb-health.com
+    cadence_days: 14
+---
+
 # PM Notes — Alpha API Platform
 
 ## 2026-05-12

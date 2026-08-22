@@ -11,4 +11,20 @@
 #     name: Bob Kim
 #     aliases: ["Bob Kim", "B. Kim", "bob.kim@example.com"]
 #     projects: [acme--platform-2026]
-{}
+
+alice-chen:
+  name: Alice Chen
+  aliases: ["Alice", "alice.chen@example.com", "alice.chen@company.com"]
+  projects: [demo--sample-2026]
+bob-kim:
+  name: Bob Kim
+  aliases: ["Bob", "B. Kim", "bob.kim@example.com"]
+  projects: [demo--sample-2026]
+carol-davis:
+  name: Carol Davis
+  aliases: ["Carol", "carol.davis@example.com"]
+  projects: [demo--sample-2026]
+dave-park:
+  name: Dave Park
+  aliases: ["Dave", "dave.park@example.com", "dave.park@partnerA.com"]
+  projects: [demo--sample-2026]
