@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from project_agent import events as events_api
-from project_agent import git, llm, projects, render, warehouse, wiki
+from project_agent import git, lint as lint_api, llm, projects, render, warehouse, wiki
 from project_agent.ingest import inbox, mcp as mcp_ingest
 from project_agent.render import PortfolioProject
 from project_agent.schemas import (
@@ -501,6 +501,176 @@ def run_compile_shared(
         cost_usd=(prose.budget.spent_usd if prose and prose.budget.spent_usd else None),
     )
 
+
+# ---------------------------------------------------------------------------
+# Wiki lint (v2.0) — structural health checks over the vault
+# ---------------------------------------------------------------------------
+
+def run_lint(
+    vault_dir: Path,
+    projects_dir: Path,
+    run_id: str,
+    emit_events: bool = True,
+    review: bool = False,
+    cache_dir: Path | None = None,
+    prompts_dir: Path | None = None,
+    model: str = "claude-sonnet-4-6",
+    llm_client: Any = None,
+) -> tuple[StageResult, lint_api.Report]:
+    """Check the vault for drift and report unresolved entities.
+
+    Findings are summarized into one pipeline_health event per project rather
+    than one per finding, and deduped on the content of the findings, so a run
+    that changes nothing appends nothing.
+    """
+    start = time.monotonic()
+
+    try:
+        project_ids = sorted(
+            d.name for d in projects_dir.iterdir()
+            if d.is_dir() and (d / "project.notes.md").exists()
+        ) if projects_dir.exists() else []
+
+        events: list[Event] = []
+        manifests: list[Path] = []
+        for project_id in project_ids:
+            project_dir = projects_dir / project_id
+            events += events_api.query(project_dir / "events.ndjson")
+            manifest = project_dir / "raw" / "compile_manifest.json"
+            if manifest.exists():
+                manifests.append(manifest)
+
+        report = lint_api.lint_vault(vault_dir, events, manifests)
+
+        if emit_events and project_ids:
+            _emit_lint_health(report, project_ids, projects_dir, run_id)
+
+        if review:
+            _write_lint_review(
+                vault_dir, report,
+                cache_dir or Path("data/cache/llm"),
+                prompts_dir or Path("prompts"),
+                model, llm_client,
+            )
+
+    except Exception:
+        logger.exception("Lint stage failed")
+        elapsed = int((time.monotonic() - start) * 1000)
+        return (
+            StageResult(
+                name="lint",
+                status="error",
+                duration_ms=elapsed,
+                counts={"errors": 1},
+                error="See logs for details",
+            ),
+            lint_api.Report(),
+        )
+
+    elapsed = int((time.monotonic() - start) * 1000)
+    counts = {check: len(items) for check, items in report.by_check().items()}
+    return (
+        StageResult(
+            name="lint",
+            status="ok",
+            duration_ms=elapsed,
+            counts={
+                **counts,
+                "findings": len(report.findings),
+                "errors": len(report.errors),
+            },
+        ),
+        report,
+    )
+
+
+def _write_lint_review(
+    vault_dir: Path,
+    report: lint_api.Report,
+    cache_dir: Path,
+    prompts_dir: Path,
+    model: str,
+    llm_client: Any,
+) -> None:
+    """Ask the model what the structural checks could not see, file the answer.
+
+    The review lands in kb/outputs/, which is the human-owned lane — it is a
+    dated artifact of one review, not a compiled article, so it is exempt from
+    the zero-diff contract.
+    """
+    inventory = lint_api.vault_inventory(vault_dir, report)
+    digest = json.dumps(inventory, sort_keys=True, ensure_ascii=False)
+    inventory_hash = wiki.input_hash(inventory)
+
+    try:
+        result = llm.extract(
+            "lint-wiki", digest, inventory_hash, model, cache_dir, prompts_dir, llm_client
+        )
+    except Exception:
+        logger.warning("Wiki review failed — skipping (structural findings still reported)")
+        return
+
+    observations = result.get("observations", [])
+    date_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+    outputs = vault_dir / "outputs"
+    outputs.mkdir(parents=True, exist_ok=True)
+    (outputs / f"lint-{date_str}.md").write_text(
+        lint_api.render_review(observations, date_str), encoding="utf-8"
+    )
+    logger.info("Wiki review written: %d observation(s)", len(observations))
+
+
+def _emit_lint_health(
+    report: lint_api.Report,
+    project_ids: list[str],
+    projects_dir: Path,
+    run_id: str,
+) -> None:
+    """One deduped pipeline_health event per project with findings."""
+    actionable = [f for f in report.findings if f.severity in ("error", "warning")]
+    if not actionable:
+        return
+
+    for project_id in project_ids:
+        relevant = [
+            f for f in actionable
+            if f.path and f.path.startswith(f"projects/{project_id}/")
+        ]
+        if not relevant:
+            continue
+
+        detail = "; ".join(f"{f.check}: {f.path}" for f in sorted(relevant, key=lambda f: (f.check, f.path or "")))
+        payload = PipelineHealthPayload(
+            type="pipeline_health",
+            category="wiki_lint",
+            message=f"{len(relevant)} vault issue(s) found",
+            detail=detail,
+        )
+        source_hash = events_api.hash_event(payload.model_dump(), "derived/lint")
+        events_path = projects_dir / project_id / "events.ndjson"
+
+        already = {
+            e.source_hash
+            for e in events_api.query(events_path, types=["pipeline_health"])
+        }
+        if source_hash in already:
+            continue
+
+        events_api.append(
+            Event(
+                event_id=str(uuid.uuid4()),
+                ts=datetime.now(tz=timezone.utc),
+                run_id=run_id,
+                project_id=project_id,
+                type="pipeline_health",
+                actor=DeterministicActor(kind="deterministic", detector="wiki_lint"),
+                source_ref="derived/lint",
+                source_hash=source_hash,
+                payload=payload,
+                hash=events_api.hash_event(payload.model_dump(), source_hash),
+            ),
+            events_path,
+        )
 
 # ---------------------------------------------------------------------------
 # Stage 3 — Warehouse Load

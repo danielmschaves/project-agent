@@ -180,6 +180,7 @@ src/project_agent/
 ├── events.py           ← NDJSON append/query/dedupe
 ├── warehouse.py        ← DuckDB: events + the vault, search, backlinks
 ├── wiki.py             ← articles, wikilinks, registry, events → kb/
+├── lint.py             ← structural health checks over the vault
 ├── projects.py         ← reads the wiki index + PM front-matter
 ├── render.py           ← MD + HTML emitter (single-project + portfolio)
 ├── git.py              ← branch/PR helpers
@@ -341,6 +342,7 @@ Defined in `.claude/commands/`:
 - `/pr` — open a PR for the current branch with a generated summary.
 - `/signals` — print all signals from the latest run, grouped by category.
 - `/ask` — answer a question against the wiki, via `pipeline search` and `pipeline wiki-sql`.
+- `/lint` — health-check the vault and review proposed registry additions.
 
 All delegate to `python -m pipeline ...` under the hood.
 

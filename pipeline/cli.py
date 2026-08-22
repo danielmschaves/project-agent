@@ -9,6 +9,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from project_agent import events as events_api
 from project_agent import projects as projects_api
@@ -82,6 +83,22 @@ def main() -> None:
     sql_p.add_argument("--data-dir", default="data",
                        help="Data directory holding warehouse.duckdb (default: data/)")
 
+    lint_p = sub.add_parser("lint", help="Health-check the compiled wiki")
+    lint_p.add_argument("--vault-dir", default="kb",
+                        help="Obsidian vault holding the compiled wiki (default: kb/)")
+    lint_p.add_argument("--projects-dir", default="projects",
+                        help="Root directory containing project folders (default: projects/)")
+    lint_p.add_argument("--no-events", action="store_true",
+                        help="Report only; do not emit pipeline_health events")
+    lint_p.add_argument("--strict", action="store_true",
+                        help="Exit non-zero when any error-severity finding is present")
+    lint_p.add_argument("--review", action="store_true",
+                        help="Also run the LLM review, filed into kb/outputs/")
+    lint_p.add_argument("--data-dir", default="data",
+                        help="Data directory holding the LLM cache (default: data/)")
+    lint_p.add_argument("--model", default="claude-sonnet-4-6", metavar="MODEL",
+                        help="Claude model for the review (default: claude-sonnet-4-6)")
+
     args = parser.parse_args()
     if args.command == "run":
         sys.exit(_cmd_run(args))
@@ -91,6 +108,54 @@ def main() -> None:
         sys.exit(_cmd_search(args))
     elif args.command == "wiki-sql":
         sys.exit(_cmd_wiki_sql(args))
+    elif args.command == "lint":
+        sys.exit(_cmd_lint(args))
+
+
+def _cmd_lint(args: argparse.Namespace) -> int:
+    """Report structural problems in the vault, grouped by check."""
+    vault_dir = Path(args.vault_dir)
+    if not vault_dir.exists():
+        print(f"ERROR: no vault at {vault_dir}", file=sys.stderr)
+        return 1
+
+    result, report = stages.run_lint(
+        vault_dir, Path(args.projects_dir), uuid.uuid4().hex[:8],
+        emit_events=not args.no_events,
+        review=args.review,
+        cache_dir=Path(args.data_dir) / "cache" / "llm",
+        model=args.model,
+    )
+    if result.status != "ok":
+        print(f"ERROR: lint failed — {result.error}", file=sys.stderr)
+        return 1
+
+    if not report.findings:
+        print("Vault is clean.")
+        return 0
+
+    for check, findings in sorted(report.by_check().items()):
+        print(f"\n{check}  ({len(findings)})")
+        for finding in findings:
+            where = f"{finding.path}: " if finding.path else ""
+            print(f"  [{finding.severity}] {where}{finding.message}")
+            if finding.suggestion:
+                print(f"      → {finding.suggestion}")
+
+    if report.proposed_people:
+        print("\nProposed additions for kb/_registry/people.yml:\n")
+        for line in _lint_module().render_registry_proposal(report.proposed_people).splitlines():
+            print(f"  {line}")
+        print("\n  Merge the entries you recognise; the compiler will link them on the next run.")
+
+    errors = len(report.errors)
+    print(f"\n{len(report.findings)} finding(s), {errors} error(s).")
+    return 1 if (args.strict and errors) else 0
+
+
+def _lint_module() -> Any:
+    from project_agent import lint
+    return lint
 
 
 def _warehouse_path(args: argparse.Namespace) -> Path | None:
