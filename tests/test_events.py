@@ -180,3 +180,76 @@ def test_query_empty_file(tmp_path: Path) -> None:
 def test_query_missing_file(tmp_path: Path) -> None:
     path = tmp_path / "events.ndjson"
     assert events_api.query(path) == []
+
+
+# ---------------------------------------------------------------------------
+# Retraction and supersession (PRD §6.2) — corrections arrive as later appends
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_retract_hides_target_from_query(tmp_path: Path) -> None:
+    path = tmp_path / "events.ndjson"
+    events_api.append(_make_event(event_id="evt-bad"), path)
+    events_api.append(_make_event(event_id="evt-good", source_hash="sha256:good"), path)
+
+    events_api.retract(
+        path,
+        event_id="evt-bad",
+        reason="misparsed owner",
+        run_id="run-002",
+        project_id="test--project",
+        actor=DeterministicActor(kind="deterministic", detector="manual"),
+    )
+
+    ids = [e.event_id for e in events_api.query(path, types=["source_ingested"])]
+    assert ids == ["evt-good"]
+
+
+@pytest.mark.integration
+def test_retract_never_rewrites_the_original_line(tmp_path: Path) -> None:
+    path = tmp_path / "events.ndjson"
+    events_api.append(_make_event(event_id="evt-bad"), path)
+    before = path.read_text(encoding="utf-8")
+
+    events_api.retract(
+        path,
+        event_id="evt-bad",
+        reason="wrong",
+        run_id="run-002",
+        project_id="test--project",
+        actor=DeterministicActor(kind="deterministic", detector="manual"),
+    )
+
+    assert path.read_text(encoding="utf-8").startswith(before)
+
+
+@pytest.mark.integration
+def test_include_retracted_returns_the_retracted_event(tmp_path: Path) -> None:
+    path = tmp_path / "events.ndjson"
+    events_api.append(_make_event(event_id="evt-bad"), path)
+    events_api.retract(
+        path,
+        event_id="evt-bad",
+        reason="wrong",
+        run_id="run-002",
+        project_id="test--project",
+        actor=DeterministicActor(kind="deterministic", detector="manual"),
+    )
+
+    ids = [e.event_id for e in events_api.query(path, include_retracted=True)]
+    assert "evt-bad" in ids
+
+
+@pytest.mark.integration
+def test_forward_supersedes_link_hides_the_old_event(tmp_path: Path) -> None:
+    """Event B listing supersedes:[A] hides A, without A being rewritten."""
+    path = tmp_path / "events.ndjson"
+    events_api.append(_make_event(event_id="evt-v1"), path)
+
+    newer = _make_event(event_id="evt-v2", source_hash="sha256:v2")
+    newer.supersedes = ["evt-v1"]
+    events_api.append(newer, path)
+
+    ids = [e.event_id for e in events_api.query(path)]
+    assert ids == ["evt-v2"]
+    assert len(events_api.query(path, include_superseded=True)) == 2
