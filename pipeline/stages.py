@@ -510,19 +510,25 @@ def run_warehouse(
     events_path: Path | list[Path],
     db_path: Path,
     run_id: str,
+    vault_dir: Path | None = None,
 ) -> StageResult:
-    """Stage 3 — materialize events into DuckDB views (PRD §8.3, MVP).
+    """Stage 3 — materialize events and the wiki into DuckDB (PRD §8.3).
 
-    Takes a list in portfolio mode so the warehouse ends up holding every
-    project rather than only the last one processed.
+    Takes a list of logs in portfolio mode so the warehouse ends up holding
+    every project rather than only the last one processed. When a vault is
+    given, its articles are indexed into the same database, which is what
+    makes cross-project questions and article-to-event joins a single query.
     """
     start = time.monotonic()
     events_loaded = 0
+    articles_indexed = 0
 
     try:
         warehouse.load(events_path, db_path)
         rows = warehouse.query(db_path, "SELECT COUNT(*) AS n FROM events_raw")
         events_loaded = int(rows[0]["n"]) if rows else 0
+        if vault_dir is not None and vault_dir.exists():
+            articles_indexed = warehouse.load_wiki(vault_dir, db_path)
     except Exception:
         logger.exception("Warehouse stage failed")
         elapsed = int((time.monotonic() - start) * 1000)
@@ -535,12 +541,19 @@ def run_warehouse(
         )
 
     elapsed = int((time.monotonic() - start) * 1000)
-    logger.info("Warehouse complete: %d events loaded (%dms)", events_loaded, elapsed)
+    logger.info(
+        "Warehouse complete: %d events, %d articles (%dms)",
+        events_loaded, articles_indexed, elapsed,
+    )
     return StageResult(
         name="warehouse",
         status="ok",
         duration_ms=elapsed,
-        counts={"events_loaded": events_loaded, "errors": 0},
+        counts={
+            "events_loaded": events_loaded,
+            "articles_indexed": articles_indexed,
+            "errors": 0,
+        },
     )
 
 

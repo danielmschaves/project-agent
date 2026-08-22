@@ -148,7 +148,7 @@ Seven layers, each idempotent and independently testable:
 ├───────────────────────────────────────────────────────┤
 │  4. Analyze        → DuckDB queries + Claude API      │
 ├───────────────────────────────────────────────────────┤
-│  3. Warehouse Load → NDJSON → DuckDB views            │
+│  3. Warehouse Load → NDJSON + kb/ → DuckDB views      │
 ├───────────────────────────────────────────────────────┤
 │  2b. Compile       → events → kb/ wiki articles       │
 ├───────────────────────────────────────────────────────┤
@@ -178,7 +178,7 @@ Three code layers:
 src/project_agent/
 ├── schemas.py          ← pydantic: Event, Signal, Project + discriminated unions
 ├── events.py           ← NDJSON append/query/dedupe
-├── warehouse.py        ← DuckDB load/query
+├── warehouse.py        ← DuckDB: events + the vault, search, backlinks
 ├── wiki.py             ← articles, wikilinks, registry, events → kb/
 ├── projects.py         ← reads the wiki index + PM front-matter
 ├── render.py           ← MD + HTML emitter (single-project + portfolio)
@@ -340,6 +340,7 @@ Defined in `.claude/commands/`:
 - `/report` — render the status report only (skip ingest/parse).
 - `/pr` — open a PR for the current branch with a generated summary.
 - `/signals` — print all signals from the latest run, grouped by category.
+- `/ask` — answer a question against the wiki, via `pipeline search` and `pipeline wiki-sql`.
 
 All delegate to `python -m pipeline ...` under the hood.
 
