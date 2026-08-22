@@ -335,6 +335,12 @@ def run_compile(
     events_path: Path,
     run_id: str,
     vault_dir: Path | None = None,
+    cache_dir: Path | None = None,
+    prompts_dir: Path | None = None,
+    model: str = "claude-sonnet-4-6",
+    config_dir: Path | None = None,
+    llm_client: Any = None,
+    prose_enabled: bool = True,
 ) -> StageResult:
     """Phase A — compile one project's articles from its event log.
 
@@ -345,16 +351,35 @@ def run_compile(
     """
     start = time.monotonic()
     vault = vault_dir if vault_dir is not None else wiki.default_vault_dir(project_dir)
+    if cache_dir is None:
+        cache_dir = Path("data/cache/llm")
+    if prompts_dir is None:
+        prompts_dir = Path("prompts")
+    if config_dir is None:
+        config_dir = Path("config")
+
     written = 0
     unchanged = 0
     removed = 0
+    prose: wiki.ProseWriter | None = None
 
     try:
         events = events_api.query(events_path, project_id=project_id)
         metadata = projects.load_notes_metadata(project_dir)
         registries = wiki.Registries.load(vault)
 
-        articles = wiki.compile_project(vault, project_id, events, metadata, registries)
+        if prose_enabled:
+            prose = wiki.ProseWriter(
+                cache_dir=cache_dir,
+                prompts_dir=prompts_dir,
+                model=model,
+                budget=wiki.ProseBudget(limit_usd=_load_llm_budget(config_dir)),
+                client=llm_client,
+            )
+
+        articles = wiki.compile_project(
+            vault, project_id, events, metadata, registries, prose
+        )
 
         manifest_path = project_dir / "raw" / "compile_manifest.json"
         manifest: dict[str, wiki.CompileRecord] = {}
@@ -389,6 +414,11 @@ def run_compile(
         "Compile complete: %d written, %d unchanged, %d pruned (%dms)",
         written, unchanged, removed, elapsed,
     )
+    if prose is not None and prose.skipped:
+        logger.warning(
+            "Prose budget exhausted — %d article(s) fell back to the template",
+            prose.skipped,
+        )
     return StageResult(
         name="compile",
         status="ok",
@@ -397,12 +427,23 @@ def run_compile(
             "articles_written": written,
             "articles_unchanged": unchanged,
             "articles_pruned": removed,
+            "prose_written": prose.calls if prose else 0,
+            "prose_skipped": prose.skipped if prose else 0,
             "errors": 0,
         },
+        cost_usd=(prose.budget.spent_usd if prose and prose.budget.spent_usd else None),
     )
 
 
-def run_compile_shared(vault_dir: Path) -> StageResult:
+def run_compile_shared(
+    vault_dir: Path,
+    cache_dir: Path | None = None,
+    prompts_dir: Path | None = None,
+    model: str = "claude-sonnet-4-6",
+    config_dir: Path | None = None,
+    llm_client: Any = None,
+    prose_enabled: bool = True,
+) -> StageResult:
     """Phase B — compile the shared layer once, after every project.
 
     people/, clients/ and concepts/ fan in across projects, so they cannot be
@@ -412,10 +453,19 @@ def run_compile_shared(vault_dir: Path) -> StageResult:
     start = time.monotonic()
     written = 0
     unchanged = 0
+    prose: wiki.ProseWriter | None = None
 
     try:
         registries = wiki.Registries.load(vault_dir)
-        articles = wiki.compile_shared(vault_dir, registries)
+        if prose_enabled:
+            prose = wiki.ProseWriter(
+                cache_dir=cache_dir or Path("data/cache/llm"),
+                prompts_dir=prompts_dir or Path("prompts"),
+                model=model,
+                budget=wiki.ProseBudget(limit_usd=_load_llm_budget(config_dir or Path("config"))),
+                client=llm_client,
+            )
+        articles = wiki.compile_shared(vault_dir, registries, prose)
         for article in articles:
             if wiki.write_article(vault_dir, article):
                 written += 1
@@ -445,8 +495,10 @@ def run_compile_shared(vault_dir: Path) -> StageResult:
         counts={
             "articles_written": written,
             "articles_unchanged": unchanged,
+            "prose_written": prose.calls if prose else 0,
             "errors": 0,
         },
+        cost_usd=(prose.budget.spent_usd if prose and prose.budget.spent_usd else None),
     )
 
 
@@ -581,6 +633,7 @@ def run_analyze(
     config_dir: Path | None = None,
     llm_client: Any = None,
     vault_dir: Path | None = None,
+    spent_usd: float = 0.0,
 ) -> tuple[StageResult, list[Signal]]:
     """Stage 4 — deterministic + LLM signal detection (PRD §8.4, Phase 1).
 
@@ -605,7 +658,7 @@ def run_analyze(
     signals_new = 0
     signals_skipped = 0
     errors = 0
-    llm_cost_spent = 0.0
+    llm_cost_spent = spent_usd
     emitted: list[Signal] = []
 
     try:
@@ -783,7 +836,7 @@ def run_analyze(
         status="ok",
         duration_ms=elapsed,
         counts={"signals_new": signals_new, "signals_skipped": signals_skipped, "errors": errors},
-        cost_usd=llm_cost_spent if llm_cost_spent > 0 else None,
+        cost_usd=(llm_cost_spent - spent_usd) or None,
     ), emitted
 
 

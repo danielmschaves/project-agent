@@ -141,7 +141,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     # Stage 2b — Compile (Phase A only; the shared layer needs every project)
     r2b, _ = _step("compile", stages.run_compile(
-        project_id, project_dir, events_path, run_id, vault_dir=vault_dir,
+        project_id, project_dir, events_path, run_id,
+        vault_dir=vault_dir, cache_dir=cache_dir, prompts_dir=prompts_dir,
+        model=args.model,
     ))
 
     # Stage 3 — Warehouse
@@ -155,6 +157,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         prompts_dir=prompts_dir,
         model=args.model,
         vault_dir=vault_dir,
+        spent_usd=r2b.cost_usd or 0.0,
     ))
     signals = signals or []
 
@@ -270,7 +273,9 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
             model=args.model,
         ))
         r2b, _ = _step("compile", stages.run_compile(
-            project_id, project_dir, events_path, run_id, vault_dir=vault_dir,
+            project_id, project_dir, events_path, run_id,
+            vault_dir=vault_dir, cache_dir=cache_dir, prompts_dir=prompts_dir,
+            model=args.model,
         ))
         r3, _ = _step("warehouse", stages.run_warehouse(all_events_paths, db_path, run_id))
         r4, signals = _step("analyze", stages.run_analyze(
@@ -280,6 +285,7 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
             prompts_dir=prompts_dir,
             model=args.model,
             vault_dir=vault_dir,
+            spent_usd=r2b.cost_usd or 0.0,
         ))
         signals = signals or []
 
@@ -342,7 +348,9 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
         portfolio_results.append((project_id, run_log, list(signals)))
 
     # Stage 2b Phase B — the shared layer, once every project is compiled
-    shared = stages.run_compile_shared(vault_dir)
+    shared = stages.run_compile_shared(
+        vault_dir, cache_dir=cache_dir, prompts_dir=prompts_dir, model=args.model,
+    )
     status_str = "✓" if shared.status == "ok" else f"✗ {shared.status}"
     print(f"\n  {'shared':12s} {status_str}  {shared.counts}")
 
