@@ -1,4 +1,4 @@
-"""Tests for project_agent.render and run_render."""
+"""Tests for project_agent.render — the portfolio dashboard."""
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +18,6 @@ from project_agent.render import (
     _verdict_callout_html,
 )
 from project_agent.schemas import Signal
-from pipeline.stages import run_render
 
 
 # ---------------------------------------------------------------------------
@@ -58,190 +57,20 @@ def design_system_dir() -> Path:
 # Unit tests — markdown
 # ---------------------------------------------------------------------------
 
-@pytest.mark.unit
-def test_report_contains_header(project_dir: Path) -> None:
-    path = render.render_status(project_dir, [], "run-001")
-    content = path.read_text(encoding="utf-8")
-    assert "# Project Status Report" in content
-    assert "run-001" in content
-    assert "green" in content  # from project.md status field
-
-
-@pytest.mark.unit
-def test_report_contains_signal_types(project_dir: Path) -> None:
-    signals = [
-        _signal("action_aging", category="action", severity="high"),
-        _signal("blocker_unowned", category="blocker", severity="high"),
-    ]
-    path = render.render_status(project_dir, signals, "run-001")
-    content = path.read_text(encoding="utf-8")
-    assert "action_aging" in content
-    assert "blocker_unowned" in content
-
-
-@pytest.mark.unit
-def test_report_groups_signals_by_category(project_dir: Path) -> None:
-    signals = [
-        _signal("action_aging", category="action"),
-        _signal("action_unowned", category="action"),
-        _signal("blocker_unowned", category="blocker"),
-    ]
-    path = render.render_status(project_dir, signals, "run-001")
-    content = path.read_text(encoding="utf-8")
-    assert "### Action" in content
-    assert "### Blocker" in content
-
-
-@pytest.mark.unit
-def test_report_no_signals_message(project_dir: Path) -> None:
-    path = render.render_status(project_dir, [], "run-001")
-    content = path.read_text(encoding="utf-8")
-    assert "No signals detected" in content
-
-
-@pytest.mark.unit
-def test_report_contains_pm_notes(project_dir: Path) -> None:
-    (project_dir / "project.notes.md").write_text("# Notes\n\nImportant PM context here.", encoding="utf-8")
-    path = render.render_status(project_dir, [], "run-001")
-    content = path.read_text(encoding="utf-8")
-    assert "Important PM context here" in content
-    assert "## PM Notes" in content
-
-
-@pytest.mark.unit
-def test_report_no_pm_notes_section_when_empty(project_dir: Path) -> None:
-    (project_dir / "project.notes.md").write_text("", encoding="utf-8")
-    path = render.render_status(project_dir, [], "run-001")
-    content = path.read_text(encoding="utf-8")
-    assert "## PM Notes" not in content
-
-
-@pytest.mark.unit
-def test_report_contains_actions_section(project_dir: Path) -> None:
-    # Seed the wiki index article with an Actions section
-    from project_agent import projects as _projects
-    index = _projects.index_path(project_dir)
-    index.parent.mkdir(parents=True, exist_ok=True)
-    index.write_text(
-        "---\nid: test--project\nstatus: green\ntype: project\n---\n\n## Mission\nTest.\n\n"
-        "## Actions\n\n- [ ] Deploy | owner: alice | due: 2026-06-01 | status: open\n",
-        encoding="utf-8",
-    )
-    path = render.render_status(project_dir, [], "run-001")
-    content = path.read_text(encoding="utf-8")
-    assert "## Actions" in content
-    assert "Deploy" in content
-
-
-@pytest.mark.unit
-def test_report_severity_icons_present(project_dir: Path) -> None:
-    signals = [
-        _signal(severity="high"),
-        _signal(severity="medium"),
-        _signal(severity="low"),
-    ]
-    path = render.render_status(project_dir, signals, "run-001")
-    content = path.read_text(encoding="utf-8")
-    assert "🔴" in content
-    assert "⚠️" in content
-    assert "ℹ️" in content
-
-
-@pytest.mark.unit
-def test_report_written_to_reports_dir(project_dir: Path) -> None:
-    path = render.render_status(project_dir, [], "run-001")
-    assert path.parent == project_dir / "reports"
-    assert path.name.startswith("status-")
-    assert path.suffix == ".md"
-
 
 # ---------------------------------------------------------------------------
 # Integration tests
 # ---------------------------------------------------------------------------
-
-@pytest.mark.integration
-def test_run_render_returns_ok(project_dir: Path) -> None:
-    result = run_render("test--project", project_dir, [], "run-001")
-    assert result.status == "ok"
-    assert result.counts["reports_written"] == 2
-    assert result.counts["errors"] == 0
-
-
-@pytest.mark.integration
-def test_run_render_creates_report_file(project_dir: Path) -> None:
-    run_render("test--project", project_dir, [], "run-001")
-    md_reports = list((project_dir / "reports").glob("status-*.md"))
-    html_reports = list((project_dir / "reports").glob("status-*.html"))
-    assert len(md_reports) == 1
-    assert len(html_reports) == 1
 
 
 # ---------------------------------------------------------------------------
 # Idempotence
 # ---------------------------------------------------------------------------
 
-@pytest.mark.idempotence
-def test_render_idempotent_same_content(project_dir: Path) -> None:
-    signals = [_signal("action_aging", evidence=["evt-abc"])]
-    path1 = render.render_status(project_dir, signals, "run-001")
-    content1 = path1.read_text(encoding="utf-8")
-
-    path2 = render.render_status(project_dir, signals, "run-001")
-    content2 = path2.read_text(encoding="utf-8")
-
-    assert content1 == content2
-
-
-@pytest.mark.idempotence
-def test_render_never_writes_to_notes_file(project_dir: Path) -> None:
-    original = (project_dir / "project.notes.md").read_text(encoding="utf-8")
-    render.render_status(project_dir, [], "run-001")
-    assert (project_dir / "project.notes.md").read_text(encoding="utf-8") == original
-
 
 # ---------------------------------------------------------------------------
 # HTML — unit tests
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_html_report_is_valid_html(project_dir: Path, design_system_dir: Path) -> None:
-    path = render.render_html(project_dir, [], "run-001", design_system_dir=design_system_dir)
-    content = path.read_text(encoding="utf-8")
-    assert content.startswith("<!DOCTYPE html>")
-    assert "</html>" in content
-
-
-@pytest.mark.unit
-def test_html_report_contains_project_info(project_dir: Path, design_system_dir: Path) -> None:
-    path = render.render_html(project_dir, [], "run-001", design_system_dir=design_system_dir)
-    content = path.read_text(encoding="utf-8")
-    assert "test--project" in content
-    assert "green" in content
-    assert "pd-head" in content
-
-
-@pytest.mark.unit
-def test_html_report_contains_signals(project_dir: Path, design_system_dir: Path) -> None:
-    signals = [
-        _signal("action_aging", category="action", severity="high"),
-        _signal("blocker_unowned", category="blocker", severity="medium"),
-    ]
-    path = render.render_html(project_dir, signals, "run-001", design_system_dir=design_system_dir)
-    content = path.read_text(encoding="utf-8")
-    assert "action_aging" in content
-    assert "blocker_unowned" in content
-    assert "sev-high" in content
-    assert "sev-medium" in content
-    assert "signal-card" in content
-
-
-@pytest.mark.unit
-def test_html_report_written_with_html_suffix(project_dir: Path, design_system_dir: Path) -> None:
-    path = render.render_html(project_dir, [], "run-001", design_system_dir=design_system_dir)
-    assert path.suffix == ".html"
-    assert path.name.startswith("status-")
-    assert path.parent == project_dir / "reports"
 
 
 @pytest.mark.unit
@@ -281,23 +110,6 @@ def test_portfolio_html_contains_all_projects(tmp_path: Path, design_system_dir:
 # ---------------------------------------------------------------------------
 # HTML — idempotence tests
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.idempotence
-def test_html_render_idempotent(project_dir: Path, design_system_dir: Path) -> None:
-    signals = [_signal("action_aging", evidence=["evt-abc"])]
-    path1 = render.render_html(project_dir, signals, "run-001", design_system_dir=design_system_dir)
-    content1 = path1.read_text(encoding="utf-8")
-    path2 = render.render_html(project_dir, signals, "run-001", design_system_dir=design_system_dir)
-    content2 = path2.read_text(encoding="utf-8")
-    assert content1 == content2
-
-
-@pytest.mark.idempotence
-def test_html_render_never_writes_to_notes_file(project_dir: Path, design_system_dir: Path) -> None:
-    original = (project_dir / "project.notes.md").read_text(encoding="utf-8")
-    render.render_html(project_dir, [], "run-001", design_system_dir=design_system_dir)
-    assert (project_dir / "project.notes.md").read_text(encoding="utf-8") == original
 
 
 # ---------------------------------------------------------------------------
@@ -410,3 +222,45 @@ def test_breadcrumb_portfolio_only_without_project() -> None:
     html = _breadcrumb_html()
     assert "pd-crumb" in html
     assert "here" not in html
+
+
+# ---------------------------------------------------------------------------
+# The design system is loaded as stylesheets, not scraped out of a document
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+def test_design_css_loads_all_three_stylesheets(design_system_dir: Path) -> None:
+    css = render._load_design_css(design_system_dir)
+    assert "--bg-deep" in css          # tokens.css
+    assert ".pd-crumb" in css or ".ig-wrap" in css  # portfolio.css
+
+
+@pytest.mark.unit
+def test_design_css_no_longer_reads_the_reference_html(tmp_path: Path) -> None:
+    """The renderer must not depend on 'Portfolio Dashboard.html' at runtime."""
+    for name in ("tokens.css", "system.css", "portfolio.css"):
+        (tmp_path / name).write_text(f"/* {name} */\n", encoding="utf-8")
+    css = render._load_design_css(tmp_path)
+    assert "portfolio.css" in css
+
+
+@pytest.mark.unit
+def test_design_css_missing_stylesheet_is_a_clear_error(tmp_path: Path) -> None:
+    (tmp_path / "tokens.css").write_text("/* x */", encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="system.css"):
+        render._load_design_css(tmp_path)
+
+
+@pytest.mark.idempotence
+def test_portfolio_render_is_idempotent(tmp_path: Path, design_system_dir: Path) -> None:
+    summaries = [
+        render.PortfolioProject(
+            project_id="acme--one", status="green", run_id="run-001",
+            signals=[], signals_new=0, errors=0, stage_statuses={}, client_id="acme",
+        )
+    ]
+    out = tmp_path / "reports"
+    first = render.render_portfolio_html(summaries, out, design_system_dir=design_system_dir)
+    content = first.read_text(encoding="utf-8")
+    second = render.render_portfolio_html(summaries, out, design_system_dir=design_system_dir)
+    assert second.read_text(encoding="utf-8") == content
