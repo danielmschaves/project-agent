@@ -744,6 +744,14 @@ def read_project_articles(vault_dir: Path) -> list[Article]:
     return [read_article(vault_dir, p.relative_to(vault_dir)) for p in sorted(root.rglob("*.md"))]
 
 
+def read_research_articles(vault_dir: Path) -> list[Article]:
+    """Research source notes currently on disk."""
+    root = vault_dir / "research"
+    if not root.exists():
+        return []
+    return [read_article(vault_dir, p.relative_to(vault_dir)) for p in sorted(root.rglob("*.md"))]
+
+
 def _backlinks_to(articles: list[Article], target_prefix: str) -> dict[str, list[Article]]:
     """slug -> articles whose body links to <target_prefix>/<slug>."""
     found: dict[str, list[Article]] = {}
@@ -773,7 +781,10 @@ def _mention_section(mentions: list[Article]) -> list[str]:
 
 
 def compile_shared(
-    vault_dir: Path, registries: Registries, prose: ProseWriter | None = None
+    vault_dir: Path,
+    registries: Registries,
+    prose: ProseWriter | None = None,
+    extra_concepts: dict[str, ConceptRef] | None = None,
 ) -> list[Article]:
     """Phase B — people, clients, concepts and the portfolio home note.
 
@@ -781,18 +792,23 @@ def compile_shared(
     per-project loop: the iteration handling the first project does not yet
     know about the last one.
     """
-    project_articles = read_project_articles(vault_dir)
+    project_articles = read_project_articles(vault_dir) + read_research_articles(vault_dir)
     indexes = [a for a in project_articles if a.type == "project"]
     people_mentions = _backlinks_to(project_articles, f"{VAULT_DIRNAME}/people/")
     concept_mentions = _backlinks_to(project_articles, f"{VAULT_DIRNAME}/concepts/")
 
     articles: list[Article] = []
 
-    for kind, registry, mentions_by_slug, folder, heading in (
-        ("person", registries.people, people_mentions, "people", "Mentioned in"),
-        ("concept", registries.concepts, concept_mentions, "concepts", "Referenced by"),
+    concept_entries = dict(registries.concepts.entries)
+    for slug, ref in (extra_concepts or {}).items():
+        # A registry entry wins: it carries curated aliases the extractor lacks.
+        concept_entries.setdefault(slug, RegistryEntry(name=ref.name))
+
+    for kind, entries, mentions_by_slug, folder, heading in (
+        ("person", registries.people.entries, people_mentions, "people", "Mentioned in"),
+        ("concept", concept_entries, concept_mentions, "concepts", "Referenced by"),
     ):
-        for slug, entry in sorted(registry.entries.items()):
+        for slug, entry in sorted(entries.items()):
             mentions = mentions_by_slug.get(slug, [])
             bundle = {
                 "slug": slug,
@@ -870,4 +886,112 @@ def compile_shared(
             body="\n".join(body),
         )
     )
+    return articles
+
+
+# ---------------------------------------------------------------------------
+# Research lane (v2.0) — a second corpus sharing the concept layer
+# ---------------------------------------------------------------------------
+
+RESEARCH_ID = "research"
+
+#: Event types the research lane projects. Deliberately disjoint from
+#: PROJECTED_TYPES: research documents are never run through the project
+#: signal detectors, and project events never produce concept articles.
+RESEARCH_TYPES = frozenset({"source_ingested", "source_summarized", "concept_added"})
+
+
+class ConceptRef(BaseModel):
+    name: str
+    description: str | None = None
+
+
+def research_concepts(events: list[Event]) -> dict[str, ConceptRef]:
+    """slug -> concept, gathered from concept_added events.
+
+    Later events win, so re-parsing a document under a newer prompt refreshes
+    the description rather than accumulating variants.
+    """
+    concepts: dict[str, ConceptRef] = {}
+    for event in events:
+        if event.type != "concept_added":
+            continue
+        payload = event.payload.model_dump()
+        concepts[str(payload["slug"])] = ConceptRef(
+            name=str(payload["name"]), description=payload.get("description")
+        )
+    return concepts
+
+
+def compile_research(
+    vault_dir: Path,
+    events: list[Event],
+    registries: Registries,
+    prose: ProseWriter | None = None,
+) -> list[Article]:
+    """Compile the research corpus into source notes.
+
+    Concept articles are not written here — they are shared with the project
+    lane and belong to Phase B, so exactly one writer owns each path.
+    """
+    events = [e for e in events if e.type in RESEARCH_TYPES]
+    summaries: dict[str, dict[str, Any]] = {
+        e.source_hash: e.payload.model_dump()
+        for e in events
+        if e.type == "source_summarized"
+    }
+    concepts_by_source: dict[str, list[str]] = {}
+    for event in events:
+        if event.type == "concept_added":
+            concepts_by_source.setdefault(event.source_hash, []).append(
+                str(event.payload.model_dump()["slug"])
+            )
+
+    all_concepts = research_concepts(events)
+    articles: list[Article] = []
+
+    for event in events:
+        if event.type != "source_ingested":
+            continue
+        payload = event.payload.model_dump()
+        filename = str(payload.get("filename", "source"))
+        slug = slugify(Path(filename).stem, max_words=12)
+        summary = summaries.get(event.source_hash, {})
+        linked = sorted(set(concepts_by_source.get(event.source_hash, [])))
+
+        facts = [
+            f"**Type:** {payload.get('source_type', 'doc')}",
+            f"**Ingested:** {event.ts.date().isoformat()}",
+        ]
+        body = [f"# {filename}", "", " · ".join(facts), "", f"`{event.source_ref}`", ""]
+        if summary.get("summary"):
+            body += ["## Summary", "", str(summary["summary"]), ""]
+        body += ["## Concepts", ""]
+        body += (
+            [
+                f"- {wikilink(Path('concepts') / f'{c}.md', all_concepts[c].name if c in all_concepts else c)}"
+                for c in linked
+            ]
+            if linked
+            else ["_No concepts extracted._"]
+        )
+
+        articles.append(
+            Article(
+                path=Path("research") / "sources" / f"{slug}.md",
+                title=filename,
+                type="source",
+                project=RESEARCH_ID,
+                tags=["source", "research"] + [
+                    f"topic/{slugify(t, max_words=3)}" for t in summary.get("topics", [])
+                ],
+                event_ids=[event.event_id],
+                source_hashes=[event.source_hash],
+                compiled_from=input_hash(
+                    event_bundle([event]) + [summary, linked]
+                ),
+                compiled_by="summarize-research@1" if summary else TEMPLATE_VERSION,
+                body="\n".join(body),
+            )
+        )
     return articles

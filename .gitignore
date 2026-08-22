@@ -27,6 +27,11 @@ projects/*/events.ndjson
 projects/*/project.md
 projects/*/reports/
 
+# Research lane runtime outputs (same policy as a project)
+research/events.ndjson
+research/raw/manifest.json
+research/raw/parse_manifest.json
+
 # Ingest/parse state manifests
 projects/*/raw/manifest.json
 projects/*/raw/parse_manifest.json
