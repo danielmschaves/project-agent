@@ -54,7 +54,7 @@ uv run python scripts/reset_demo.py
 The pipeline runs in six idempotent stages:
 
 ```
-1. Ingest         → file drops + MCP (Gmail/Drive/Calendar) → manifest.json
+1. Ingest         → file drops into raw/_inbox/ → manifest.json
 2. Parse          → LLM extraction (cached) → events.ndjson + project.md
 3. Warehouse Load → events.ndjson → DuckDB views
 4. Analyze        → SQL + LLM signal detectors → signal_detected events
@@ -75,7 +75,6 @@ Visual references (open locally):
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Yes (Parse stage) | Claude API for LLM extraction |
 | `GH_TOKEN` | Yes (Commit stage) | GitHub CLI for opening PRs |
-| `GOOGLE_TOKEN_PATH` | No (MCP ingest) | Path to OAuth2 token JSON for Gmail/Drive/Calendar. If unset, MCP ingest is skipped; file-drop only. |
 | `GIT_AUTHOR_NAME` | No | Identity for pipeline commits |
 | `GIT_AUTHOR_EMAIL` | No | Identity for pipeline commits |
 
