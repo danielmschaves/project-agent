@@ -34,7 +34,7 @@ docker compose run --rm pipeline pytest
    <!-- PM notes, goals, context. Pipeline never writes here. -->
    ```
 
-3. **Drop source files** into `projects/acme--website-relaunch/sources/_inbox/`. Supported types: `.md`, `.txt`, `.eml`, `.csv`, `.json`.
+3. **Drop source files** into `projects/acme--website-relaunch/raw/_inbox/`. Supported types: `.md`, `.txt`, `.eml`, `.csv`, `.json`.
 
 4. **Run the pipeline:**
    ```bash
@@ -89,9 +89,11 @@ Visual references (open locally):
 src/project_agent/   ← package — all state mutation goes through here
 pipeline/            ← thin orchestration glue (run + portfolio commands)
 prompts/             ← versioned Claude API prompts
+kb/                  ← the compiled wiki — bot-owned, committed, opened as an Obsidian vault
+.obsidian/           ← committed vault config (per-machine UI state is gitignored)
 projects/<id>/
   project.notes.md   ← PM-owned, always committed (discovery anchor)
-  sources/           ← drop source files here; _inbox/ is the entry point
+  raw/               ← drop source files here; _inbox/ is the entry point
   reports/           ← gitignored; pipeline commits on auto/* branches
   events.ndjson      ← gitignored; pipeline commits on auto/* branches
   project.md         ← gitignored; pipeline commits on auto/* branches

@@ -22,11 +22,11 @@ from project_agent.ingest.inbox import scan_inbox
 # ---------------------------------------------------------------------------
 
 def _make_inbox(tmp_path: Path) -> Path:
-    inbox = tmp_path / "sources" / "_inbox"
+    inbox = tmp_path / "raw" / "_inbox"
     inbox.mkdir(parents=True)
-    (tmp_path / "sources" / "manifest.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "raw" / "manifest.json").write_text("{}", encoding="utf-8")
     for folder in ("emails", "docs", "backlog", "meetings"):
-        (tmp_path / "sources" / folder).mkdir()
+        (tmp_path / "raw" / folder).mkdir()
     return inbox
 
 

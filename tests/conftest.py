@@ -7,11 +7,11 @@ import pytest
 def project_dir(tmp_path: Path) -> Path:
     """Minimal project directory tree for tests."""
     for subdir in [
-        "sources/_inbox",
-        "sources/emails",
-        "sources/docs",
-        "sources/backlog",
-        "sources/meetings",
+        "raw/_inbox",
+        "raw/emails",
+        "raw/docs",
+        "raw/backlog",
+        "raw/meetings",
         "derived",
         "reports",
     ]:
@@ -21,7 +21,7 @@ def project_dir(tmp_path: Path) -> Path:
         "---\nid: test--project\nstatus: green\n---\n\n## Mission\nTest project.\n"
     )
     (tmp_path / "project.notes.md").write_text("# PM Notes\n")
-    (tmp_path / "sources" / "manifest.json").write_text("{}")
+    (tmp_path / "raw" / "manifest.json").write_text("{}")
     return tmp_path
 
 

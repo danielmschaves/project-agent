@@ -269,7 +269,7 @@ Each signal has a JSON spec under `data/schemas/signals/<type>.json`. SQL detect
 - **Emitting `signal_detected` without `evidence: [event_id, ...]`.** Pydantic rejects it — surface as a clear error.
 - **Inlining a prompt as a Python string.** Prompts live in `prompts/*.md`. Bump `version` when you change one.
 - **Adding a new event type without updating the discriminated union.** Update `project_agent.schemas` first.
-- **Reading from `sources/<typed-folder>/` before ingest runs.** Ingest moves files out of `_inbox/`. Other stages assume files are in typed folders.
+- **Reading from `raw/<typed-folder>/` before ingest runs.** Ingest moves files out of `_inbox/`. Other stages assume files are in typed folders.
 - **Expecting `_inbox/` to retain skipped files.** `scan_inbox` now deletes files from `_inbox/` when their `source_hash` is already in `manifest.json`. This keeps the inbox clean across MCP re-fetches; don't rely on skipped files persisting there.
 - **Hand-editing `events.ndjson`.** Append-only, package-mediated. Use `event_retracted` events instead.
 - **Forgetting the operations log.** Each stage must update `data/runs/<run_id>.json`.
@@ -291,6 +291,10 @@ Each signal has a JSON spec under `data/schemas/signals/<type>.json`. SQL detect
 - **Project ID convention:** `<client>--<project>` until decided (PRD §13.1).
 - **Runtime outputs are gitignored; pipeline uses `git add -f` to commit them.** All generated files (`project.md`, `events.ndjson`, `reports/`, manifests, run logs) are in `.gitignore` so dev branches stay clean. `project_agent.git.commit_all(force_paths=[...])` adds them explicitly on `auto/<date>` branches. This is intentional — do not remove these gitignore rules.
 - **Project discovery uses `project.notes.md`.** `pipeline portfolio` finds projects via `_discover_projects`, which checks for `project.notes.md` (PM-owned, always committed) rather than `project.md` (bot-generated, gitignored). A fresh clone will have `project.notes.md` but not `project.md`; that is the correct state.
+- **The repo root is an Obsidian vault; `kb/` is the compiled wiki.** `.obsidian/` holds committed vault config (`newLinkFormat: absolute`, `useMarkdownLinks: false` — wikilinks must be full-path so same-named articles in different projects cannot collide). Per-machine UI state (`workspace.json`, `cache`, `plugins/`) is gitignored.
+- **`kb/` is deliberately NOT gitignored**, unlike every other generated artifact. The wiki is the readable source of truth and has to exist on a fresh clone or the vault opens empty. The consequence is real: running the pipeline on a dev branch dirties `kb/`. Use `--dry-run` when you don't want that.
+- **`kb/_registry/*.yml` is human-owned.** The compiler resolves people/clients/concepts through it as a plain dictionary lookup, which is what keeps entity resolution deterministic. `pipeline lint` proposes additions; a human merges them.
+- **`sources/` was renamed to `raw/`** (v2.0). `projects/<id>/raw/` holds `_inbox/` plus the typed folders and the ingest/parse/compile manifests.
 - **`design-system/` is tracked in git.** `tokens.css`, `system.css`, and the reference HTML files are committed so teammates can reference and extend the design language when building new report layouts.
 
 **Open and deferred** (ask first, don't decide unilaterally): outbox storage policy, cron host & threat model, source artifact size, LLM cost cap policy, Δ7d snapshot strategy for indicator grid. See PRD §13.

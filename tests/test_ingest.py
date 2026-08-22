@@ -37,7 +37,7 @@ def test_classify_by_extension(filename: str, expected: str) -> None:
 # ---------------------------------------------------------------------------
 
 def _seed_inbox(project_dir: Path, files: dict[str, bytes]) -> None:
-    inbox = project_dir / "sources" / "_inbox"
+    inbox = project_dir / "raw" / "_inbox"
     inbox.mkdir(parents=True, exist_ok=True)
     for name, content in files.items():
         (inbox / name).write_bytes(content)
@@ -54,14 +54,14 @@ def test_scan_inbox_moves_files_and_returns_results(project_dir: Path) -> None:
     assert types == {"email", "doc"}
 
     # Files moved out of _inbox
-    assert not list((project_dir / "sources" / "_inbox").iterdir())
+    assert not list((project_dir / "raw" / "_inbox").iterdir())
 
     # Files landed in typed folders
-    assert (project_dir / "sources" / "emails" / "meeting.eml").exists()
-    assert (project_dir / "sources" / "docs" / "spec.md").exists()
+    assert (project_dir / "raw" / "emails" / "meeting.eml").exists()
+    assert (project_dir / "raw" / "docs" / "spec.md").exists()
 
     # Manifest updated
-    manifest = json.loads((project_dir / "sources" / "manifest.json").read_text())
+    manifest = json.loads((project_dir / "raw" / "manifest.json").read_text())
     assert len(manifest) == 2
     for result in results:
         assert result.source_hash in manifest
@@ -80,7 +80,7 @@ def test_scan_inbox_sets_correct_metadata(project_dir: Path) -> None:
     assert r.source_type == "doc"
     assert r.size_bytes == len(content)
     assert r.source_hash.startswith("sha256:")
-    assert r.source_ref == "sources/docs/notes.txt"
+    assert r.source_ref == "raw/docs/notes.txt"
     assert r.is_new is True
     assert r.sender is None  # non-email sources have no sender
 
@@ -104,7 +104,7 @@ def test_ingest_result_sender_defaults_none() -> None:
         source_type="doc",
         size_bytes=10,
         source_hash="sha256:abc",
-        source_ref="sources/docs/doc.md",
+        source_ref="raw/docs/doc.md",
         is_new=True,
     )
     assert r.sender is None
@@ -119,7 +119,7 @@ def test_scan_inbox_empty_returns_empty(project_dir: Path) -> None:
 @pytest.mark.integration
 def test_scan_inbox_skips_missing_inbox(tmp_path: Path) -> None:
     # project_dir with no _inbox directory at all
-    (tmp_path / "sources").mkdir()
+    (tmp_path / "raw").mkdir()
     results = scan_inbox(tmp_path)
     assert results == []
 

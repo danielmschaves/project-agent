@@ -31,7 +31,7 @@ def _base_event(**overrides: object) -> dict:
         "project_id": "test--project",
         "type": "source_ingested",
         "actor": {"kind": "deterministic", "detector": "inbox"},
-        "source_ref": "sources/_inbox/doc.md",
+        "source_ref": "raw/_inbox/doc.md",
         "source_hash": "sha256:abc123",
         "payload": {
             "type": "source_ingested",

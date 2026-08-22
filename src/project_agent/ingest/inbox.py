@@ -60,15 +60,15 @@ def _save_manifest(manifest_path: Path, manifest: dict[str, str]) -> None:
 
 def scan_inbox(project_dir: Path) -> list[IngestResult]:
     """
-    Scan sources/_inbox/, classify each file, move it to its typed folder,
+    Scan raw/_inbox/, classify each file, move it to its typed folder,
     and return one IngestResult per newly seen file.
 
     Files already recorded in manifest.json (keyed by source_hash) are skipped
     so re-running produces zero new results — the source-level idempotence gate
     (PRD §6.2).
     """
-    inbox_dir = project_dir / "sources" / "_inbox"
-    manifest_path = project_dir / "sources" / "manifest.json"
+    inbox_dir = project_dir / "raw" / "_inbox"
+    manifest_path = project_dir / "raw" / "manifest.json"
 
     manifest = _load_manifest(manifest_path)
     results: list[IngestResult] = []
@@ -98,7 +98,7 @@ def scan_inbox(project_dir: Path) -> list[IngestResult]:
             except Exception:
                 logger.debug("Could not parse From: header for %s", file_path.name)
 
-        dest_dir = project_dir / "sources" / _TYPE_TO_FOLDER.get(source_type, "docs")
+        dest_dir = project_dir / "raw" / _TYPE_TO_FOLDER.get(source_type, "docs")
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / file_path.name
 

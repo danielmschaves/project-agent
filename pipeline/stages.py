@@ -53,7 +53,7 @@ def run_ingest(
     sources_from_mcp = 0
 
     try:
-        inbox_dir = project_dir / "sources" / "_inbox"
+        inbox_dir = project_dir / "raw" / "_inbox"
         token_path_str = os.environ.get("GOOGLE_TOKEN_PATH", "")
         if token_path_str:
             token_path = Path(token_path_str)
@@ -233,7 +233,7 @@ def run_parse(
     prompt_name = "extract-context"
 
     try:
-        parse_manifest_path = project_dir / "sources" / "parse_manifest.json"
+        parse_manifest_path = project_dir / "raw" / "parse_manifest.json"
         parse_manifest = _load_parse_manifest(parse_manifest_path)
 
         prompt_version = llm.load_prompt(prompt_name, prompts_dir).version
@@ -773,8 +773,8 @@ def run_commit(
             project_dir / "events.ndjson",
             project_dir / "project.md",
             project_dir / "reports",
-            project_dir / "sources" / "manifest.json",
-            project_dir / "sources" / "parse_manifest.json",
+            project_dir / "raw" / "manifest.json",
+            project_dir / "raw" / "parse_manifest.json",
         ])
 
         pr_body = (
@@ -856,8 +856,8 @@ def run_commit_portfolio(
                 pd / "events.ndjson",
                 pd / "project.md",
                 pd / "reports",
-                pd / "sources" / "manifest.json",
-                pd / "sources" / "parse_manifest.json",
+                pd / "raw" / "manifest.json",
+                pd / "raw" / "parse_manifest.json",
             ]
         git.commit_all(repo_root, commit_msg, force_paths=force)
 

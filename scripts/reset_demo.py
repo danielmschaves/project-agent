@@ -7,11 +7,11 @@ What this wipes:
   - data/cache/llm/             → deleted (forces LLM re-parse on next run)
   - data/runs/*.json            → deleted
   - projects/<id>/events.ndjson → emptied (if project-local)
-  - projects/<id>/sources/manifest.json       → reset to {}
-  - projects/<id>/sources/parse_manifest.json → deleted
-  - projects/<id>/sources/emails/             → files moved back to _inbox/
-  - projects/<id>/sources/docs/               → files moved back to _inbox/
-  - projects/<id>/sources/backlog/            → files moved back to _inbox/
+  - projects/<id>/raw/manifest.json       → reset to {}
+  - projects/<id>/raw/parse_manifest.json → deleted
+  - projects/<id>/raw/emails/             → files moved back to _inbox/
+  - projects/<id>/raw/docs/               → files moved back to _inbox/
+  - projects/<id>/raw/backlog/            → files moved back to _inbox/
   - projects/<id>/reports/                    → deleted
 
 Usage:
@@ -45,8 +45,8 @@ def reset(project_id: str, keep_cache: bool, yes: bool) -> None:
         print(f"ERROR: project not found: {project_dir}", file=sys.stderr)
         sys.exit(1)
 
-    sources_dir = project_dir / "sources"
-    inbox_dir = sources_dir / "_inbox"
+    raw_dir = project_dir / "raw"
+    inbox_dir = raw_dir / "_inbox"
     typed_folders = ["emails", "docs", "backlog", "meetings"]
 
     # --- preview ---
@@ -58,14 +58,14 @@ def reset(project_id: str, keep_cache: bool, yes: bool) -> None:
     else:
         print(f"  data/cache/llm/             → kept (--keep-cache)")
     print(f"  data/runs/                  → delete all run logs")
-    print(f"  projects/{project_id}/sources/manifest.json       → {{}}")
-    print(f"  projects/{project_id}/sources/parse_manifest.json → delete")
+    print(f"  projects/{project_id}/raw/manifest.json       → {{}}")
+    print(f"  projects/{project_id}/raw/parse_manifest.json → delete")
     for folder in typed_folders:
-        p = sources_dir / folder
+        p = raw_dir / folder
         if p.exists():
             files = list(p.iterdir())
             if files:
-                print(f"  projects/{project_id}/sources/{folder}/  → {len(files)} file(s) moved to _inbox/")
+                print(f"  projects/{project_id}/raw/{folder}/  → {len(files)} file(s) moved to _inbox/")
     reports_dir = project_dir / "reports"
     if reports_dir.exists():
         print(f"  projects/{project_id}/reports/              → delete")
@@ -114,12 +114,12 @@ def reset(project_id: str, keep_cache: bool, yes: bool) -> None:
             print(f"  deleted: {deleted} run log(s) in data/runs/")
 
     # --- ingest manifest → {} ---
-    manifest = sources_dir / "manifest.json"
+    manifest = raw_dir / "manifest.json"
     manifest.write_text("{}\n", encoding="utf-8")
     print(f"  reset:   {manifest.relative_to(ROOT)}")
 
     # --- parse manifest → delete ---
-    parse_manifest = sources_dir / "parse_manifest.json"
+    parse_manifest = raw_dir / "parse_manifest.json"
     if parse_manifest.exists():
         parse_manifest.unlink()
         print(f"  deleted: {parse_manifest.relative_to(ROOT)}")
@@ -127,7 +127,7 @@ def reset(project_id: str, keep_cache: bool, yes: bool) -> None:
     # --- move files from typed folders back to _inbox/ ---
     inbox_dir.mkdir(parents=True, exist_ok=True)
     for folder_name in typed_folders:
-        folder = sources_dir / folder_name
+        folder = raw_dir / folder_name
         if not folder.exists():
             continue
         moved = 0
@@ -141,7 +141,7 @@ def reset(project_id: str, keep_cache: bool, yes: bool) -> None:
             f.rename(dest)
             moved += 1
         if moved:
-            print(f"  restored: {moved} file(s) from sources/{folder_name}/ → sources/_inbox/")
+            print(f"  restored: {moved} file(s) from raw/{folder_name}/ → raw/_inbox/")
         folder.rmdir()
 
     # --- reports ---
