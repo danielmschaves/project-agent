@@ -27,8 +27,10 @@ logger = logging.getLogger(__name__)
 def _discover_projects(projects_dir: Path) -> list[str]:
     """Return sorted project IDs — subdirs of projects_dir that contain project.notes.md.
 
-    Uses project.notes.md (PM-owned fixture, always committed) rather than
-    project.md (bot-generated, gitignored) so discovery works on a fresh clone.
+    project.notes.md is the PM-owned file and is always committed, which makes
+    it the one reliable marker of "this directory is a project". research/
+    deliberately lacks it, which is what keeps the research corpus out of the
+    signal detectors.
     """
     return sorted(
         d.name

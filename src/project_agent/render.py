@@ -19,7 +19,7 @@ _SEVERITY_LABEL: dict[str, str] = {
     "low": "Low",
 }
 
-# Status → CSS modifier (project.md uses "amber"; pill class uses "status-yellow")
+# Status → CSS modifier (the index article uses "amber"; the pill class is "status-yellow")
 _STATUS_CSS: dict[str, str] = {
     "green": "status-green",
     "amber": "status-yellow",
@@ -34,7 +34,7 @@ _PILL_GLYPH: dict[str, str] = {
         ' stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
         "</svg>"
     ),
-    # project.md emits "amber"; CSS class is status-yellow — both keys map to warning glyph
+    # the index article emits "amber"; the CSS class is status-yellow — both map to the warning glyph
     "amber": (
         '<svg class="pill-glyph" viewBox="0 0 12 12" fill="none">'
         '<path d="M6 2v5M6 9.5v0.2" stroke="currentColor"'

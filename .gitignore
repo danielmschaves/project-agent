@@ -25,7 +25,6 @@ data/runs/*.json
 # Per-project generated outputs
 projects/*/events.ndjson
 projects/*/project.md
-projects/*/reports/
 
 # Research lane runtime outputs (same policy as a project)
 research/events.ndjson

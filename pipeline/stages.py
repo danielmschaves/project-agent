@@ -1274,7 +1274,6 @@ def run_commit(
         )
         git.commit_all(repo_root, commit_msg, force_paths=[
             project_dir / "events.ndjson",
-            project_dir / "reports",
             project_dir / "raw" / "manifest.json",
             project_dir / "raw" / "parse_manifest.json",
         ])
@@ -1356,7 +1355,6 @@ def run_commit_portfolio(
             pd = projects_root / pid
             force += [
                 pd / "events.ndjson",
-                pd / "reports",
                 pd / "raw" / "manifest.json",
                 pd / "raw" / "parse_manifest.json",
             ]
