@@ -9,6 +9,8 @@ What this wipes:
   - projects/<id>/events.ndjson → emptied (if project-local)
   - projects/<id>/raw/manifest.json       → reset to {}
   - projects/<id>/raw/parse_manifest.json → deleted
+  - projects/<id>/raw/compile_manifest.json → deleted
+  - kb/projects/<id>/            → deleted (the compiled wiki for this project)
   - projects/<id>/raw/emails/             → files moved back to _inbox/
   - projects/<id>/raw/docs/               → files moved back to _inbox/
   - projects/<id>/raw/backlog/            → files moved back to _inbox/
@@ -148,6 +150,19 @@ def reset(project_id: str, keep_cache: bool, yes: bool) -> None:
     if reports_dir.exists():
         shutil.rmtree(reports_dir)
         print(f"  deleted: {reports_dir.relative_to(ROOT)}/")
+
+    # --- compiled wiki ---
+    # Without this the events are cleared but the articles they produced are
+    # not, so the next run compiles against half-cleared state.
+    vault_project = ROOT / "kb" / "projects" / project_id
+    if vault_project.exists():
+        shutil.rmtree(vault_project)
+        print(f"  deleted: {vault_project.relative_to(ROOT)}/")
+
+    compile_manifest = raw_dir / "compile_manifest.json"
+    if compile_manifest.exists():
+        compile_manifest.unlink()
+        print(f"  deleted: {compile_manifest.relative_to(ROOT)}")
 
     print(f"\nDone. '{project_id}' is ready for a fresh run.")
     print(f"  docker compose run --rm pipeline python -m pipeline run --project {project_id}")

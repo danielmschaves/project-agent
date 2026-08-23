@@ -11,7 +11,7 @@ from typing import Any
 
 from project_agent import events as events_api
 from project_agent import git, lint as lint_api, llm, projects, render, warehouse, wiki
-from project_agent.ingest import inbox, mcp as mcp_ingest
+from project_agent.ingest import inbox
 from project_agent.render import PortfolioProject
 from project_agent.schemas import (
     ActionAddedPayload,
@@ -43,34 +43,26 @@ def run_ingest(
     events_path: Path,
     run_id: str,
 ) -> StageResult:
-    """Stage 1 — file-drop + MCP ingest (PRD §8.1, Phase 0.5).
+    """Stage 1 — file-drop ingest (PRD §8.1).
 
-    MCP adapters run when GOOGLE_TOKEN_PATH is set.  OAuth failures are
-    non-fatal: the stage logs a warning and continues with file-drop sources.
+    Everything arrives the same way: as a file in `raw/_inbox/`. Fetching from
+    Gmail, Drive or Calendar is Claude Code's job through its MCP connectors —
+    the pipeline no longer holds OAuth credentials of its own. Only the fetch
+    moved; classification, hashing and dedup are unchanged.
+
+    Files dropped by the agent should keep the naming convention the retired
+    adapters used, because the date prefix is what preserves ordering and the
+    extension is what drives classification:
+
+        <YYYY-MM-DD>-gmail-<id>.eml
+        <YYYY-MM-DD>-drive-<slug>.md
+        <YYYY-MM-DD>-cal-<slug>.md
     """
-    import os
     start = time.monotonic()
     sources_seen = 0
     sources_new = 0
-    sources_from_mcp = 0
 
     try:
-        inbox_dir = project_dir / "raw" / "_inbox"
-        token_path_str = os.environ.get("GOOGLE_TOKEN_PATH", "")
-        if token_path_str:
-            token_path = Path(token_path_str)
-            try:
-                creds = mcp_ingest.build_credentials(token_path)
-                for fetch_fn in (
-                    mcp_ingest.fetch_gmail,
-                    mcp_ingest.fetch_drive,
-                    mcp_ingest.fetch_calendar,
-                ):
-                    fetched = fetch_fn(project_id, inbox_dir, creds)
-                    sources_from_mcp += len(fetched)
-            except Exception:
-                logger.warning("MCP ingest failed — continuing with file-drop only")
-
         results = inbox.scan_inbox(project_dir)
         sources_seen = len(results)
 
@@ -107,17 +99,13 @@ def run_ingest(
             counts={
                 "sources_seen": sources_seen,
                 "sources_new": sources_new,
-                "sources_from_mcp": sources_from_mcp,
                 "errors": 1,
             },
             error="See logs for details",
         )
 
     elapsed = int((time.monotonic() - start) * 1000)
-    logger.info(
-        "Ingest complete: %d seen, %d new, %d from MCP (%dms)",
-        sources_seen, sources_new, sources_from_mcp, elapsed,
-    )
+    logger.info("Ingest complete: %d seen, %d new (%dms)", sources_seen, sources_new, elapsed)
     return StageResult(
         name="ingest",
         status="ok",
@@ -125,7 +113,6 @@ def run_ingest(
         counts={
             "sources_seen": sources_seen,
             "sources_new": sources_new,
-            "sources_from_mcp": sources_from_mcp,
             "errors": 0,
         },
     )
