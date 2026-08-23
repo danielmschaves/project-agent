@@ -291,10 +291,6 @@ def _cmd_run(args: argparse.Namespace) -> int:
     events_path.touch()
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    design_system_dir: Path | None = Path("design-system")
-    if not design_system_dir.exists():
-        design_system_dir = None
-
     run_log = RunLog(
         run_id=run_id,
         started_at=datetime.now(tz=timezone.utc),
@@ -305,7 +301,6 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     def _step(name: str, result_or_pair: object) -> StageResult:  # type: ignore[name-defined]
         # run_analyze returns (StageResult, signals); others return StageResult
-        from project_agent.schemas import StageResult as SR
         if isinstance(result_or_pair, tuple):
             result, extra = result_or_pair
         else:
@@ -369,12 +364,6 @@ def _cmd_run(args: argparse.Namespace) -> int:
                     detected_at=evt.ts,
                     recommended_action=p.recommended_action,
                 ))
-
-    # Stage 5 — Render
-    _step("render", stages.run_render(
-        project_id, project_dir, signals, run_id,
-        design_system_dir=design_system_dir, vault_dir=vault_dir,
-    ))
 
     # Stage 6 — Commit
     _step("commit", stages.run_commit(project_id, project_dir, run_log, Path(".")))
@@ -444,7 +433,6 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
         print(f"\n[{run_id}] Project: {project_id}")
 
         def _step(name: str, result_or_pair: object) -> tuple[object, object]:
-            from project_agent.schemas import StageResult as SR
             if isinstance(result_or_pair, tuple):
                 result, extra = result_or_pair
             else:
@@ -499,10 +487,6 @@ def _cmd_portfolio(args: argparse.Namespace) -> int:
                         recommended_action=p.recommended_action,
                     ))
 
-        _step("render", stages.run_render(
-            project_id, project_dir, signals, run_id,
-            design_system_dir=design_system_dir, vault_dir=vault_dir,
-        ))
 
         run_log.ended_at = datetime.now(tz=timezone.utc)
         runs_dir = data_dir / "runs"
