@@ -1198,41 +1198,6 @@ def run_analyze(
 # Stage 5 — Render
 # ---------------------------------------------------------------------------
 
-def run_render(
-    project_id: str,
-    project_dir: Path,
-    signals: list[Signal],
-    run_id: str,
-    design_system_dir: Path | None = None,
-    vault_dir: Path | None = None,
-) -> StageResult:
-    """Stage 5 — render MD + HTML status reports (PRD §8.5, Phase 0.5)."""
-    start = time.monotonic()
-    try:
-        render.render_status(project_dir, signals, run_id, vault_dir=vault_dir)
-        render.render_html(
-            project_dir, signals, run_id,
-            design_system_dir=design_system_dir, vault_dir=vault_dir,
-        )
-        logger.info("Render complete: %s (MD + HTML)", project_id)
-    except Exception:
-        logger.exception("Render stage failed")
-        elapsed = int((time.monotonic() - start) * 1000)
-        return StageResult(
-            name="render",
-            status="error",
-            duration_ms=elapsed,
-            counts={"reports_written": 0, "errors": 1},
-            error="See logs for details",
-        )
-    elapsed = int((time.monotonic() - start) * 1000)
-    return StageResult(
-        name="render",
-        status="ok",
-        duration_ms=elapsed,
-        counts={"reports_written": 2, "errors": 0},
-    )
-
 
 def run_render_portfolio(
     project_summaries: list[PortfolioProject],
@@ -1309,7 +1274,6 @@ def run_commit(
         )
         git.commit_all(repo_root, commit_msg, force_paths=[
             project_dir / "events.ndjson",
-            project_dir / "reports",
             project_dir / "raw" / "manifest.json",
             project_dir / "raw" / "parse_manifest.json",
         ])
@@ -1391,7 +1355,6 @@ def run_commit_portfolio(
             pd = projects_root / pid
             force += [
                 pd / "events.ndjson",
-                pd / "reports",
                 pd / "raw" / "manifest.json",
                 pd / "raw" / "parse_manifest.json",
             ]

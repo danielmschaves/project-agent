@@ -3,361 +3,259 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > **Read this first, every session.**
-> This is the operating manual for working on Project Agent.
-> It exists to keep you (Claude Code) aligned with the architecture between sessions, since you have no memory of prior work beyond what's in git.
->
-> **v0.4 changes:** MVP scope trimmed — file-drop ingest only, MD-only render, fewer warehouse tables. Idempotence contract rebuilt around source-hash + LLM response cache. `project.md` split into bot-owned + PM-owned notes. Event schema gains `schema_version`, `run_id`, `retracted`, `supersedes`, structured `actor`, discriminated `payload`. Operations log added. Stage 3 renamed Warehouse Load. See `REVIEW_NOTES.md`.
->
-> **v0.5 changes:** Phase 0.5 complete. HTML rendering ships — both single-project status dashboard and portfolio cross-project dashboard. MCP ingest live (Gmail/Drive/Calendar). `pipeline portfolio` command added. `_BASE_CSS` dropped; design system CSS inlined from `design-system/`. `PortfolioProject` model extended with `client_id`, `sponsor`, `phase`, `last_source_ts`, `events_count`.
->
-> **v1.0 (Phase 1, PR 1):** Schema + Parse extensions. `run_parse()` now emits `risk_added`, `decision_made`, and `milestone_added` events from extracted source content. `extract-context.md` bumped to v2 (adds `milestones` extraction — triggers cache miss on all prior sources, re-parsing them under the new prompt). `SourceIngestedPayload` gains optional `sender` field (populated from `From:` header for email sources; used by the upcoming `stakeholder_inactivity` signal). Two new payload types: `MilestoneAddedPayload`, `PipelineHealthPayload`. `projects.update_project()` now renders `Risks`, `Decisions`, and `Milestones` sections in `project.md`.
-> **v1.1 (Phase 1, PR 3):** New deterministic signals. Four detectors added: `risk_unaddressed` (open risk > stale_days), `blocker_aging` (blocker open > aging_days), `deliverable_drift` (milestone due within near_days with non-done status), `stakeholder_inactivity` (stakeholder email gap > cadence_days — requires prior email history as evidence anchor). `run_analyze()` now accepts optional `project_dir` to load stakeholder watchlist from `project.md` front-matter. `_load_signal_thresholds()` extended for all 7 signal types. Schema JSON files added in `data/schemas/signals/`.
-> **v1.2 (Phase 1, PR 4):** LLM signals + cost cap. Three LLM detectors added in `signals/llm.py`: `risk_escalation` (existing risks worsening based on recent activity), `risk_emergent` (new risks not yet captured), `tone_shift` (sentiment shift in stakeholder communications). `run_analyze()` now accepts `cache_dir`, `prompts_dir`, `model`, `config_dir`, `llm_client` parameters. LLM signals run after deterministic; when the per-project-per-day budget (`config/signals.yaml`) is hit, a `pipeline_health` event is emitted and remaining LLM detectors are skipped. `llm.extract_with_cost()` added — returns `(dict, cost_usd)` with 0.0 on cache hit. Three new prompt files: `detect-risk-escalation.md`, `detect-risk-emergent.md`, `detect-tone-shift.md` (all v1).
+> This is the operating manual for Project Agent. It exists to keep you aligned with the
+> architecture between sessions, since you have no memory of prior work beyond what's in git.
+> `PRD.md` carries the *why*; this file carries the *how*.
 
 ---
 
 ## What this repo is
 
-Project Agent is a git-versioned, AI-augmented project operating system. The full vision and rationale live in `PRD.md`. The visual reference lives in `ARCHITECTURE.md`. **Read both before any non-trivial work.**
+A daily pipeline ingests project sources, parses them into an append-only event log,
+**compiles that log into a markdown wiki** read in Obsidian, indexes both in DuckDB,
+detects signals, renders a portfolio dashboard, and opens a PR for the PM to review.
+Nothing reaches `main` without a human merge.
 
-One-line summary: **a daily pipeline ingests project sources, parses them into a markdown source-of-truth + an append-only event log, detects signals, renders reports, and opens a PR for the PM to review.** Nothing reaches `main` without a human merge.
+The full vision is in `PRD.md` (v2.0). **Read it before any non-trivial work.**
 
 ---
 
 ## Commands
 
-### Dev setup
 ```bash
-# Primary: Docker (no host Python env needed)
+# Setup — Docker preferred, uv is the documented alternative
 docker compose build
+uv sync --extra dev
 
-# Alternative: local with uv
-uv sync                        # installs all deps including dev
-```
+# Run
+python -m pipeline run --project <id>      # one project; Compile Phase A only
+python -m pipeline portfolio               # all projects + shared layer + PR
+python -m pipeline research                # the research corpus lane
 
-### Run the pipeline
-```bash
-# Docker (recommended)
-docker compose run --rm pipeline python -m pipeline run --project <id>
+# Read
+python -m pipeline search "redis circuit breaker"
+python -m pipeline wiki-sql "SELECT type, count(*) FROM documents GROUP BY 1"
+python -m pipeline lint [--review] [--strict]
 
-# Local
-uv run python -m pipeline run --project <id>
-```
-
-### Tests
-```bash
-# Docker
-docker compose run --rm pipeline pytest -m unit
-docker compose run --rm pipeline pytest -m boundary
-docker compose run --rm pipeline pytest              # full suite
-
-# Local
-uv run pytest                             # full suite
-uv run pytest -m unit                     # fast pure-function tests only
-uv run pytest -m integration              # filesystem / DuckDB / git tests
-uv run pytest -m idempotence              # run-twice, assert zero diff tests
-uv run pytest -m boundary                 # package-boundary lint (must never fail)
-uv run pytest tests/test_<module>.py      # single module
-```
-
-### Type checking
-```bash
-docker compose run --rm pipeline mypy --strict src/
-# or locally:
-uv run mypy --strict src/
+# Verify
+pytest                    # full suite
+pytest -m unit            # pure functions, no I/O
+pytest -m integration     # filesystem / DuckDB / git
+pytest -m idempotence     # run twice, assert zero diff
+pytest -m boundary        # the §5.1 lint — must never fail
+mypy --strict src/
 ```
 
 ---
 
 ## The Rules That Matter Most
 
-If you forget everything else, remember these.
-
 ### 1. The Package Boundary (PRD §5.1)
 
-**All state mutation goes through `src/project_agent/` APIs.**
+**All state mutation goes through `src/project_agent/` APIs.** Nothing in `pipeline/` or
+`agents/` may:
 
-Anything in `pipeline/`, `agents/`, or anywhere else may **not**:
-- Open `data/events.ndjson` directly → use `project_agent.events`
-- Open a DuckDB connection directly → use `project_agent.warehouse`
-- Write into `kb/` directly → use `project_agent.wiki`
-- Call `anthropic.*` directly → use `project_agent.llm`
-- Shell out to `git` for state changes → use `project_agent.git`
+- open `events.ndjson` directly → use `project_agent.events`
+- open a DuckDB connection → use `project_agent.warehouse`
+- write into `kb/` → use `project_agent.wiki`
+- call `anthropic.*` → use `project_agent.llm`
+- shell out to `git` for state changes → use `project_agent.git`
 
-Enforced by CI lint (`tests/test_boundary.py`). Failing this fails the build. If you want to do any of the above from outside the package, **stop and add the function to the package instead.**
+Three boundary lints enforce this. Failing one fails the build. To do any of the above
+from outside the package, **add the function to the package instead.**
 
-The lint is not airtight (misses `importlib`, transitive imports, re-exports — PRD §5.1 documents this). Don't circumvent it on purpose.
+The lint is regex/AST over direct imports and writes — it misses `importlib`, transitive
+imports and re-exports. Don't circumvent it on purpose.
 
 ### 2. The HITL Invariant (PRD §9)
 
-**The pipeline never takes externally observable action without a merged PR.**
-
-- No commits to `main`. Always `auto/<date>` branch + PR.
-- No emails sent (Phase 3+ `--send` flag; until then, drafts only).
-- No calendar events, no Jira writes (Phase 3+, 4+).
+**The pipeline never takes externally observable action without a merged PR.** No commits
+to `main` — always `auto/<date>` + PR. No emails sent. No calendar or Jira writes.
 
 ### 3. The LLM Cache is the Idempotence Backbone (PRD §6.2)
 
-Every call to `project_agent.llm.extract` (and any other LLM call in the parse path) is cached in `data/cache/llm/`, keyed on `(prompt_name, prompt_version, source_hash, model)`. Cache hits replay byte-identical responses, making re-runs zero-diff.
+Every model call is cached in `data/cache/llm/`, keyed on
+`(prompt_name, prompt_version, source_hash, model)`. Cache hits replay byte-identical
+responses, making re-runs zero-diff.
 
-- **Never** call `anthropic.*` from inside the package without routing through the cache wrapper.
-- **Never** mutate cached responses. To re-parse under new instructions, bump the prompt `version` field. Old events get superseded via the `supersedes` chain.
-- If a cache key collides with stale content, invalidate by bumping prompt version — not by deleting cache files.
+- **Never** call `anthropic.*` without routing through the cache wrapper.
+- **Never** mutate cached responses. To re-parse under new instructions, bump the prompt
+  `version`. Old events get superseded via the `supersedes` chain.
+- `llm.is_cached` is checked *before* the spend budget, so hitting the cap can never
+  regress a finished article back to its template.
 
 ### 4. `kb/` is Bot-Owned; `project.notes.md` is PM-Owned (PRD §6.1)
 
-**`project.md` no longer exists (v2.0).** A project's state is the compiled wiki at
-`kb/projects/<id>/`, written by the Compile stage on every run. The PM never edits it.
+**`project.md` does not exist.** A project's state is the compiled wiki at
+`kb/projects/<id>/`, rewritten by Compile on every run.
 
-- Writing to `kb/**` from outside `project_agent.wiki` → **stop**, it's a boundary violation
-  and the lint fails the build. Articles must stay reproducible from the event log.
-- Writing to `project.notes.md` from any stage → **stop**, it's PM-owned. Never.
-- The PM's declared metadata (`status`, `sponsor`, `phase`, `stakeholders`, …) lives in
-  `project.notes.md` front-matter. Compile copies it forward into the index article; the
-  prose below the front-matter is read only as an excerpt for reports.
-- `kb/_registry/*.yml` is also human-owned: the compiler reads it, never writes it.
+- Writing to `kb/**` outside `project_agent.wiki` → **stop.** Articles must stay
+  reproducible from the event log.
+- Writing to `project.notes.md` from any stage → **stop.** PM-owned. Never.
+- PM metadata (`status`, `sponsor`, `phase`, `stakeholders`) lives in `project.notes.md`
+  front-matter; Compile copies it into the index article.
+- `kb/_registry/*.yml` is human-owned: the compiler reads it, never writes it.
+- `kb/outputs/` is the one hand-written lane, and the only place `​```duckdb` blocks belong.
 
-### 5. Compile is Deterministic (v2.0)
+### 5. Compile is Deterministic (PRD §6.1)
 
 An article's identity is its `input_hash` — the canonical JSON of the events feeding it.
-Same events → same hash → same bytes → zero diff on re-run. Two consequences:
+Same events → same hash → same bytes → zero diff.
 
-- **Never put a wall-clock timestamp in a compiled article.** Use values derived from
-  events, which are fixed once written. `datetime.now()` anywhere in the compile path is a bug.
-- **Only fact events are projected** (`wiki.PROJECTED_TYPES`). `signal_detected` is excluded
-  on purpose: Analyze runs *after* Compile and appends to the same log, so including signals
+- **Never put a wall-clock timestamp in a compiled article.** `datetime.now()` anywhere in
+  the compile path is a bug.
+- **Only fact events are projected** (`wiki.PROJECTED_TYPES`). `signal_detected` is
+  excluded: Analyze runs *after* Compile and appends to the same log, so including signals
   would make every second run rewrite the vault. It is also the anti-circularity rule.
-- **LLM prose is additive, never structural.** `wiki.ProseWriter` fills a `## Summary`
-  section keyed on the article's `input_hash`; front-matter, wikilinks, evidence and
-  backlinks are always templated. A failed call or an exhausted budget degrades to the
-  deterministic article — it never loses a link or a provenance record.
-- **Cached prose replays even at zero budget.** `llm.is_cached` is checked *before* the
-  budget, so hitting the cap cannot regress a finished article back to its template.
+- **Wikilinks are vault-absolute** (`[[kb/...]]`). Two projects may hold the same
+  filename; Obsidian's shortest-path resolution would silently pick one.
+- **LLM prose is additive, never structural.** Front-matter, links, evidence and backlinks
+  are always templated; a failed call degrades to the deterministic article.
+
+### 6. The Agent's Output is Events, Never Articles (PRD §4.3)
+
+When Claude Code enriches the wiki — naming concepts, merging duplicate risks — it emits
+**events** and lets the compiler project them. It does not write articles.
+
+This keeps one writer for `kb/`, preserves provenance, and means zero-diff holds
+regardless of which intelligence produced the events.
 
 ---
 
 ## Architecture
 
-Seven layers, each idempotent and independently testable:
-
 ```
-┌───────────────────────────────────────────────────────┐
-│  6. Commit         → git PR drafts (HITL)             │
-├───────────────────────────────────────────────────────┤
-│  5. Render         → MD + HTML reports (both shipped)  │
-├───────────────────────────────────────────────────────┤
-│  4. Analyze        → DuckDB queries + Claude API      │
-├───────────────────────────────────────────────────────┤
-│  3. Warehouse Load → NDJSON + kb/ → DuckDB views      │
-├───────────────────────────────────────────────────────┤
-│  2b. Compile       → events → kb/ wiki articles       │
-├───────────────────────────────────────────────────────┤
-│  2. Parse          → raw sources → events             │
-├───────────────────────────────────────────────────────┤
-│  1. Ingest         → file drops + MCP (both shipped)  │
-└───────────────────────────────────────────────────────┘
+6. Commit          → auto/<date> branch + PR (HITL)
+5. Render          → portfolio dashboard (HTML)
+4. Analyze         → deterministic + LLM signals
+3. Warehouse Load  → events + kb/ → DuckDB
+2b. Compile        → events → kb/ articles   (Phase A per project, Phase B once)
+2. Parse           → raw documents → fact events
+1. Ingest          → raw/_inbox/ → typed folders
 ```
 
-Three code layers:
-
-| Layer | What lives here |
-|---|---|
-| **Substrate** (`src/project_agent/`) | Pure functions, pydantic models, narrow I/O primitives. All state mutation. |
-| **Glue** (`pipeline/`) | Thin imperative scripts: read args → call package → log ops. No direct I/O. |
-| **Wrappers** (`agents/`, Phase 5b) | Claude API loops with tool definitions that call the package. Empty until Phase 5. |
-
-**Key idempotence flows:**
-- *Same file re-ingested* → `source_hash` matches `manifest.json` → skipped, zero events.
-- *Same source, same prompt version* → LLM cache hit → byte-identical events, zero diff.
-- *Edited source* → new `source_hash` → new events with `supersedes: [<old_event_ids>]`.
-- *Prompt version bumped* → cache miss → re-parse, new events supersede old ones.
-
-**Package module map:**
+**Package modules:**
 
 ```
 src/project_agent/
-├── schemas.py          ← pydantic: Event, Signal, Project + discriminated unions
-├── events.py           ← NDJSON append/query/dedupe
-├── warehouse.py        ← DuckDB: events + the vault, search, backlinks
-├── wiki.py             ← articles, wikilinks, registry, events → kb/
-├── lint.py             ← structural health checks over the vault
-├── projects.py         ← reads the wiki index + PM front-matter
-├── render.py           ← MD + HTML emitter (single-project + portfolio)
-├── git.py              ← branch/PR helpers
-├── llm.py              ← Claude API client + cache wrapper
-├── ingest/
-│   ├── inbox.py        ← file-drop reader
-│   ├── backlog.py      ← CSV/JSON reader
-│   └── mcp.py          ← Gmail/Drive/Calendar (shipped Phase 0.5)
-└── signals/
-    ├── deterministic.py ← SQL-based detectors
-    └── llm.py           ← Claude-evaluated detectors (Phase 1+)
+├── schemas.py       ← pydantic: Event, Signal + discriminated unions
+├── events.py        ← NDJSON append/query/retract, correction chains
+├── warehouse.py     ← DuckDB: events + the vault, search, backlinks
+├── wiki.py          ← articles, wikilinks, registry, events → kb/
+├── lint.py          ← structural health checks over the vault
+├── projects.py      ← reads the wiki index + PM front-matter
+├── render.py        ← the portfolio dashboard
+├── git.py           ← branch/PR helpers
+├── llm.py           ← Claude API client + cache wrapper
+├── ingest/inbox.py  ← file-drop reader (the only ingest path)
+└── signals/         ← deterministic.py, llm.py
 ```
 
----
-
-## Current Phase: Phase 1 (LLM Signals)
-
-Phase 0.5 is **complete** — MCP ingest, 30-day corpus, HTML rendering v2, and portfolio PR shape are all shipped.
-
-**Phase 0.5 — delivered:**
-- ✅ MCP ingest — `project_agent.ingest.mcp` (Gmail/Drive/Calendar via `google-api-python-client`). Gate: set `GOOGLE_TOKEN_PATH=<path-to-token.json>`. If unset, falls back to file-drop only.
-- ✅ 30-day history backfill — 17 synthetic source files spanning 2026-04-10 to 2026-05-14.
-- ✅ HTML rendering — both single-project status dashboard and portfolio cross-project dashboard. Design system CSS inlined from `design-system/`. `_BASE_CSS` removed. Editorial header, 5-card fact strip, indicator grid (6 categories × project), attention strip (top-3 by score), verdict callout. Byte-identical on re-run.
-- ✅ Portfolio PR shape — `pipeline portfolio` discovers all projects in `projects/`, runs stages 1–5 per project, renders portfolio HTML dashboard, then opens one PR. `pipeline run --project <id>` retained for single-project dev use.
-
-**Phase 1 — in progress (sequenced as 4 PRs):**
-- ✅ PR 1: Schema + Parse extensions (`MilestoneAddedPayload`, `PipelineHealthPayload`, `sender` on `SourceIngestedPayload`; `run_parse()` emits `risk_added`/`decision_made`/`milestone_added`; `extract-context.md` v2)
-- ✅ PR 2: Warehouse Phase 1 views — `risks`, `decisions`, `milestones` views (+ `_full` variants). All expose `event_id` for evidence linking. All filter `retracted=false AND superseded_by IS NULL` by default.
-- ✅ PR 3: New deterministic signals (`risk_unaddressed`, `blocker_aging`, `deliverable_drift`, `stakeholder_inactivity`). `run_analyze()` gains optional `project_dir` for stakeholder watchlist loading from project.md front-matter.
-- ✅ PR 4: LLM signals + cost cap (`signals/llm.py`; 3 prompts; `config/signals.yaml`; `llm.extract_with_cost()`)
-- 🔲 PR 5: Scheduled operation (deferred — after LLM signals are stable)
-
-**Out of scope until later phases:**
-- Portfolio cross-project signals (Phase 2), outbound emails (Phase 3), Jira (Phase 4), multi-agent (Phase 5)
+**Idempotence flows:**
+- Same file re-ingested → `source_hash` in `manifest.json` → skipped, zero events.
+- Same source + prompt version → LLM cache hit → byte-identical events.
+- Same events → same `input_hash` → byte-identical articles.
+- Prompt version bumped → cache miss → re-parse, new events supersede old.
 
 ---
 
 ## Conventions
 
-### Python
-- Python 3.11+. `pyproject.toml` is the source of truth for deps. Don't pin versions in code.
-- `src/` layout — install editable via `pip install -e .`.
-- Pydantic v2 for all schemas. No `dataclasses`, no `TypedDict`, no `dict` in function signatures where a model fits.
-- `Event.payload` — discriminated union over event `type` (`RiskAddedPayload`, `ActionAddedPayload`, `SignalDetectedPayload`, …). Discriminator is `payload.type`.
-- `Event.actor` — discriminated union over `actor.kind` (`LLMActor`, `HumanActor`, `MCPActor`, `DeterministicActor`).
-- `mypy --strict` must pass. No `print()` — use `logging`. No `os.path` — use `pathlib.Path`.
-- No global state, no module-level mutation, no singletons. Pass dependencies as arguments.
+**Python.** 3.12+. Pydantic v2 for all schemas — no dataclasses, no `TypedDict`, no bare
+`dict` where a model fits. `mypy --strict` on `src/`. No `print()` — use `logging`. No
+`os.path` — use `pathlib`. No global state, no singletons; pass dependencies as arguments.
 
-### Tests
-Four pytest markers — every test gets exactly one:
-- `@pytest.mark.unit` — pure functions, no I/O
-- `@pytest.mark.integration` — filesystem, DuckDB, or git (uses `tmp_path`)
-- `@pytest.mark.idempotence` — runs a stage twice, asserts second run is a no-op; must assert no `anthropic.*` call on cache hit via a recording client
-- `@pytest.mark.boundary` — the §5.1 lint; failing this fails the build
+**Tests.** Four markers, exactly one per test: `unit` (no I/O), `integration` (fs/DuckDB/
+git via `tmp_path`), `idempotence` (run twice, assert no-op; must assert zero API calls on
+cache hit via a recording client), `boundary` (the §5.1 lint).
 
-Every package module has a corresponding `tests/test_<module>.py`. Idempotence tests are non-negotiable for any stage that mutates state.
+**Git.** `auto/<YYYY-MM-DD>` for pipeline runs, `feat/<desc>` for dev work. Commit
+messages: imperative, first line ≤ 72 chars, body explains *why*. One PR per stage.
 
-### Git
-- Branch naming: `auto/<YYYY-MM-DD>` for pipeline-generated; `feat/<short-desc>` for dev work.
-- Commit messages: imperative mood, first line ≤ 72 chars, body explains *why*.
-- One PR per pipeline stage during MVP build. Don't bundle.
+**Prompts.** All in `prompts/*.md`, loaded by `llm.load_prompt`. Front-matter carries
+`purpose`, `model`, `max_tokens`, `expected_schema`, **`version`**. Bumping `version`
+invalidates the cache for that prompt. Never inline prompt text in Python.
 
-### Prompts
-- All Claude API prompts live in `prompts/*.md`, loaded by `project_agent.llm.load_prompt(name)`.
-- Compiler prompts (`write-article`, `write-source-note`, `write-concept`, `write-index`) return
-  `{"summary": ...}` and must never emit links, headings or front-matter — the article supplies
-  all structure. Bumping one recompiles every article it touches.
-- Each prompt file has front-matter: `purpose`, `model`, `max_tokens`, `expected_schema`, **`version: <int>`**.
-- Bumping `version` invalidates the LLM cache for that prompt. Never inline prompt text in Python.
-
----
-
-## Data Contracts (cheat sheet)
-
-Full specs in PRD §6.
-
-**Event** — append-only NDJSON. Required: `event_id`, `schema_version`, `ts`, `run_id`, `project_id`, `type`, `actor` (discriminated by `kind`), `source_ref`, `source_hash`, `payload` (discriminated by `type`), `hash`. Optional: `confidence`, `supersedes`, `superseded_by`, `retracted`, `retracted_reason`.
-
-**Signal** — written back as `signal_detected` events. Required: `signal_id`, `schema_version`, `project_id`, `run_id`, `category` (risk/deliverable/action/blocker/backlog/communication), `type`, `severity`, `confidence`, `evidence` (non-empty list of `event_id`s), `method` (deterministic|llm), `rationale`, `detected_at`, `recommended_action`.
-
-**Operations log** — `data/runs/<run_id>.json`. Per-stage: `name`, `status`, `duration_ms`, `counts`, optional `cost_usd`. Committed with each PR.
-
-**Fixing bad data** — emit `event_retracted` via `project_agent.events.append`. Never mutate `events.ndjson`.
-
----
-
-## MVP Signal Catalog
-
-| Category | Signal | Method | Phase |
-|---|---|---|---|
-| Action | **action_aging** | deterministic | **MVP** |
-| Action | **action_unowned** | deterministic | **MVP** |
-| Blocker | **blocker_unowned** | deterministic | **MVP** |
-| Risk | risk_unaddressed | deterministic | 1 |
-| Risk | risk_escalation / risk_emergent | LLM | 1 |
-| Deliverable | deliverable_drift | deterministic | 1 |
-| Blocker | blocker_aging | deterministic | 1 |
-| Communication | stakeholder_inactivity | deterministic | 1 |
-| Communication | tone_shift | LLM | 1 |
-| Deliverable | deliverable_dependency_stall | LLM | 2 |
-| Backlog | scope_churn / velocity_anomaly | deterministic | 4 |
-
-**Anti-circularity (Phase 1+):** signal detectors of either kind skip `signal_detected` events when reading the warehouse. LLM prompts may not cite `signal_detected` events as evidence.
-
-Each signal has a JSON spec under `data/schemas/signals/<type>.json`. SQL detectors must return triggering `event_id`s, not just aggregates — every `signal_detected` event needs `evidence: [event_id, ...]`.
+Compiler prompts (`write-article`, `write-source-note`, `write-concept`, `write-index`)
+return `{"summary": ...}` and must never emit links, headings or front-matter — the article
+supplies all structure. Bumping one recompiles every article it touches.
 
 ---
 
 ## Common Gotchas
 
-- **Writing an article from a pipeline script.** Violates Rule 1. Use `project_agent.wiki.write_article`.
-- **Calling `datetime.now()` in the compile path.** Breaks the zero-diff contract — see Rule 5.
-- **Emitting a relative wikilink.** Two projects may hold the same filename; links must be vault-absolute (`[[kb/...]]`).
-- **Writing to `project.notes.md` from any code.** PM-owned. Never.
-- **Calling `anthropic.*` without going through the LLM cache wrapper.** Silently breaks idempotence — tests pass once, fail next day on cron.
-- **Opening DuckDB in a stage function.** Violates Rule 1. Use `project_agent.warehouse.query`.
-- **Skipping the second-run idempotence check.** A stage that "works" but produces a different `events.ndjson` on re-run is broken.
-- **Emitting `signal_detected` without `evidence: [event_id, ...]`.** Pydantic rejects it — surface as a clear error.
-- **Inlining a prompt as a Python string.** Prompts live in `prompts/*.md`. Bump `version` when you change one.
-- **Adding a new event type without updating the discriminated union.** Update `project_agent.schemas` first.
-- **Reading from `raw/<typed-folder>/` before ingest runs.** Ingest moves files out of `_inbox/`. Other stages assume files are in typed folders.
-- **Expecting `_inbox/` to retain skipped files.** `scan_inbox` now deletes files from `_inbox/` when their `source_hash` is already in `manifest.json`. This keeps the inbox clean across MCP re-fetches; don't rely on skipped files persisting there.
-- **Hand-editing `events.ndjson`.** Append-only, package-mediated. Use `event_retracted` events instead.
-- **Forgetting the operations log.** Each stage must update `data/runs/<run_id>.json`.
-- **Committing pipeline outputs to a dev branch.** `project.md`, `events.ndjson`, `reports/`, `manifest.json`, `parse_manifest.json`, and `data/runs/*.json` are all gitignored. On dev branches they stay local. The pipeline's `run_commit` / `run_commit_portfolio` stages use `git add -f` (via `project_agent.git.commit_all(force_paths=[...])`) to include them only on `auto/<date>` branches. Don't bypass this with `git add -A` outside of the package.
-- **Using `project.md` as the project discovery anchor.** `_discover_projects` checks for `project.notes.md`, not `project.md`. `project.md` is gitignored and won't exist on a fresh clone. Always create `project.notes.md` first when adding a new project.
+- **Writing an article from a pipeline script.** Violates Rule 1. Use `wiki.write_article`.
+- **Calling `datetime.now()` in the compile path.** Breaks zero-diff — Rule 5.
+- **Emitting a relative wikilink.** Two projects may share a filename — Rule 5.
+- **Writing to `project.notes.md`.** PM-owned. Never.
+- **Calling `anthropic.*` outside the cache wrapper.** Silently breaks idempotence: tests
+  pass once, fail tomorrow.
+- **Opening DuckDB in a stage.** Use `warehouse.query`.
+- **Skipping the second-run idempotence check.** A stage that "works" but produces a
+  different vault on re-run is broken.
+- **Emitting `signal_detected` without `evidence`.** Pydantic rejects it.
+- **Adding an event type without updating the discriminated union.** `schemas.py` first.
+- **Removing a member from a discriminated union.** Breaks validation for stored events
+  that used it. `MCPActor` stays for exactly this reason, though nothing produces it.
+- **Hand-editing `events.ndjson`.** Append-only. Use `events.retract`.
+- **Expecting `_inbox/` to retain skipped files.** `scan_inbox` deletes files whose hash is
+  already in the manifest, so re-fetches don't accumulate.
+- **Forgetting the operations log.** Each stage returns a `StageResult`; the CLI writes
+  `data/runs/<run_id>.json`.
+- **Assuming `pipeline run` compiles everything.** It does Phase A only. Shared
+  people/clients/concepts need `pipeline portfolio`.
 
 ---
 
 ## Decisions Already Made
 
-- **MCP ingest is live in Phase 0.5.** Set `GOOGLE_TOKEN_PATH=<path-to-token.json>` (OAuth2 authorized-user format). Without it, the stage silently skips MCP and runs file-drop only. Token is refreshed in-place when expired.
-- **MCP adapters write to `_inbox/` only.** They do not emit events. `inbox.scan_inbox` handles classification, manifest dedup, and event emission — same as file-drop. `scan_inbox` now deletes already-known files from `_inbox/` (hash in manifest) so re-fetched MCP content does not accumulate.
-- **Phase 0.5 signals are deterministic only.** LLM signals come in Phase 1.
-- **Phase 0.5 render ships both MD and HTML.** `render_status()` emits MD; `render_html()` emits single-project HTML; `render_portfolio_html()` emits the cross-project dashboard. All three are idempotent.
-- **Idempotence is anchored on source-hash + LLM response cache.** Event-hash dedup is a secondary defense.
-- **`event_retracted` is the mechanism for fixing bad data.** Never mutate `events.ndjson`.
-- **`Event.payload` and `actor` are discriminated unions.** No `dict[str, Any]`.
-- **No ABCs, no plugin systems, no DI containers.** Pure functions and pydantic. `typing.Protocol` if two concrete impls share a shape.
-- **Project ID convention:** `<client>--<project>` until decided (PRD §13.1).
-- **Runtime outputs are gitignored; pipeline uses `git add -f` to commit them.** All generated files (`project.md`, `events.ndjson`, `reports/`, manifests, run logs) are in `.gitignore` so dev branches stay clean. `project_agent.git.commit_all(force_paths=[...])` adds them explicitly on `auto/<date>` branches. This is intentional — do not remove these gitignore rules.
-- **Project discovery uses `project.notes.md`.** `pipeline portfolio` finds projects via `_discover_projects`, which checks for `project.notes.md` (PM-owned, always committed) rather than `project.md` (bot-generated, gitignored). A fresh clone will have `project.notes.md` but not `project.md`; that is the correct state.
-- **The repo root is an Obsidian vault; `kb/` is the compiled wiki.** `.obsidian/` holds committed vault config (`newLinkFormat: absolute`, `useMarkdownLinks: false` — wikilinks must be full-path so same-named articles in different projects cannot collide). Per-machine UI state (`workspace.json`, `cache`, `plugins/`) is gitignored.
-- **`kb/` is deliberately NOT gitignored**, unlike every other generated artifact. The wiki is the readable source of truth and has to exist on a fresh clone or the vault opens empty. The consequence is real: running the pipeline on a dev branch dirties `kb/`. Use `--dry-run` when you don't want that.
-- **`kb/_registry/*.yml` is human-owned.** The compiler resolves people/clients/concepts through it as a plain dictionary lookup, which is what keeps entity resolution deterministic. `pipeline lint` proposes additions; a human merges them.
-- **The research lane is a second corpus, not a project.** `research/raw/_inbox/` takes web clippings and papers; they compile into `kb/research/sources/` and share `kb/concepts/` with the project lane. They are never passed to the signal detectors — `_discover_projects` keys on `project.notes.md`, which `research/` deliberately lacks.
-- **`sources/` was renamed to `raw/`** (v2.0). `projects/<id>/raw/` holds `_inbox/` plus the typed folders and the ingest/parse/compile manifests.
-- **`design-system/` is tracked in git.** `tokens.css`, `system.css`, and the reference HTML files are committed so teammates can reference and extend the design language when building new report layouts.
+- **Claude Code's MCP connectors do the fetching.** The Python Google adapters are
+  retired; the pipeline holds no OAuth credentials. The agent drops files into
+  `raw/_inbox/` using the `<date>-<source>-<id>.<ext>` convention — the date prefix
+  preserves ordering, the extension drives classification.
+- **The repo root is an Obsidian vault; `kb/` is the wiki.** `.obsidian/` is committed
+  with `newLinkFormat: absolute` and `useMarkdownLinks: false`. Per-machine UI state is
+  gitignored.
+- **`kb/` is deliberately NOT gitignored**, unlike every other generated artifact — the
+  vault must exist on a fresh clone. The consequence is real: pipeline runs dirty `kb/` on
+  dev branches. Use `--dry-run` when you don't want that.
+- **`kb/_registry/*.yml` is human-owned.** Entity resolution is a dictionary lookup, which
+  is what keeps it deterministic. `pipeline lint` proposes additions; a human merges them.
+- **The research lane is a second corpus, not a project.** It shares `kb/concepts/` and is
+  never passed to the signal detectors — `_discover_projects` keys on `project.notes.md`,
+  which `research/` deliberately lacks.
+- **Per-project status reports are retired.** Obsidian renders `kb/projects/<id>/` better.
+  The portfolio dashboard remains as the artifact for someone without the vault.
+- **Search uses a term-frequency scorer, not DuckDB `fts`.** The extension needs a
+  download from `extensions.duckdb.org`, which is unreachable from some hosts. Swapping in
+  `match_bm25` later changes only `warehouse.search`.
+- **`sources/` was renamed `raw/`** (v2.0), freeing "sources" to mean the per-document
+  summary notes in the wiki.
 
-**Open and deferred** (ask first, don't decide unilaterally): outbox storage policy, cron host & threat model, source artifact size, LLM cost cap policy, Δ7d snapshot strategy for indicator grid. See PRD §13.
+**Open — ask first, don't decide unilaterally:** one vault holding several clients
+(PRD §13.2), binary/PDF decoding (§13.9), `outbox/` storage policy (§13.6), scale beyond
+the demo corpus (§13.12).
 
 ---
 
 ## Slash Commands
 
-Defined in `.claude/commands/`:
-
-- `/sync` — run the full pipeline for the current project on the working branch.
-- `/report` — render the status report only (skip ingest/parse).
-- `/pr` — open a PR for the current branch with a generated summary.
-- `/signals` — print all signals from the latest run, grouped by category.
-- `/ask` — answer a question against the wiki, via `pipeline search` and `pipeline wiki-sql`.
-- `/lint` — health-check the vault and review proposed registry additions.
-
-All delegate to `python -m pipeline ...` under the hood.
+`/sync` · `/report` · `/pr` · `/signals` · `/ask` · `/lint` — all defined in
+`.claude/commands/` and delegating to `python -m pipeline ...`.
 
 ---
 
 ## When Something Is Wrong
 
-1. Don't fix it speculatively. Ask the maintainer first.
-2. Run the test suite. Read the failures.
+1. Don't fix speculatively. Ask the maintainer.
+2. Run the suite. Read the failures.
 3. Check `git log` and recent PR descriptions for context.
-4. Check `projects/<id>/events.ndjson` for the last few events (per-project log; not tracked on dev branches).
-5. If project state looks corrupt: the source files and `project.notes.md` are always in git. Re-run the pipeline from a clean state using `uv run python scripts/reset_demo.py` (demo) or by deleting the local `events.ndjson` and `project.md` files and re-running.
+4. Check `projects/<id>/events.ndjson` for the last few events.
+5. If the vault looks wrong, run `pipeline lint` — it reports drift between the vault and
+   the log it was compiled from.
+6. To start clean: `uv run python scripts/reset_demo.py`, which clears the events, the
+   manifests *and* the compiled articles for that project.
 
 ---
 
-*CLAUDE.md v0.5.1 — companion to PRD.md v0.5 and ARCHITECTURE.md v0.2.*
-*Update this file whenever a working agreement changes.*
+*CLAUDE.md v2.0 — companion to PRD.md v2.0.*

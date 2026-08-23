@@ -33,7 +33,9 @@ def commit_all(
     """Stage all changes and create a commit.
 
     force_paths are added with -f so gitignored pipeline outputs
-    (events.ndjson, project.md, reports/) reach the auto/* PR.
+    (events.ndjson, the ingest and parse manifests, the portfolio report)
+    reach the auto/* PR. kb/ is not among them — the vault is committed
+    normally, because it has to exist on a fresh clone.
     """
     _run(["git", "add", "-A"], repo_root)
     for p in force_paths or []:

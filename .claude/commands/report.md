@@ -1,16 +1,20 @@
-Re-render the status report for the current project from state already on disk.
-
-There is no stage-skipping flag yet, so a full run is the only way to regenerate
-a report from scratch:
+Render the portfolio dashboard — the one artifact someone without the vault can read.
 
 ```bash
-docker compose run --rm pipeline python -m pipeline run --project <id>
+docker compose run --rm pipeline python -m pipeline portfolio
 ```
 
-Re-running is cheap when nothing upstream changed: ingest skips sources whose
-hash is already in `raw/manifest.json`, parse skips sources already recorded in
-`raw/parse_manifest.json`, and any LLM call that does happen replays from the
-response cache. The stage counts printed per run show what was actually done.
+Then display the path of the generated `reports/portfolio-<date>.html`.
 
-Then display the generated `projects/<id>/reports/status-<date>.md` and note the
-path of the HTML report at `projects/<id>/reports/status-<date>.html`.
+Per-project status reports were retired: Obsidian renders the same material better
+straight from `kb/projects/<id>/`, and the vault is the interface now. For a single
+project, open its index article — or query it:
+
+```bash
+python -m pipeline wiki-sql "
+  SELECT type, title FROM documents
+  WHERE project = '<id>' ORDER BY type, title"
+```
+
+The dashboard is deterministic: the same summaries render byte-identically, so a re-run
+with no new signals produces no diff.

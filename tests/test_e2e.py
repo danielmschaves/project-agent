@@ -87,11 +87,6 @@ def demo_project(tmp_path: Path) -> tuple[Path, Path, Path, Path, Path]:
     project_dir = tmp_path / "projects" / "demo--sample-2026"
     shutil.copytree(str(_DEMO_SRC), str(project_dir))
 
-    # Remove any pre-existing reports so the test starts clean
-    reports_dir = project_dir / "reports"
-    if reports_dir.exists():
-        shutil.rmtree(str(reports_dir))
-
     # The committed demo has its documents already sorted into typed folders,
     # because ingest moved them there and _inbox/ is transient. Put them back
     # so the run actually exercises ingest instead of finding nothing to do.
@@ -161,7 +156,6 @@ def _run_full_pipeline(
         prompts_dir=prompts_dir,
         config_dir=config_dir,
     )
-    stages.run_render("demo--sample-2026", project_dir, signals or [], run_id)
     stages.run_compile_shared(project_dir.parent.parent / "kb", prose_enabled=False)
 
     return stages, signals or []
@@ -239,19 +233,6 @@ def test_e2e_signals_have_non_empty_evidence(demo_project: tuple) -> None:
         p = evt.payload
         assert isinstance(p, SignalDetectedPayload)
         assert len(p.evidence) >= 1
-
-
-@pytest.mark.integration
-def test_e2e_status_report_created(demo_project: tuple) -> None:
-    project_dir, events_path, db_path, cache_dir, schemas_dir = demo_project
-
-    _run_full_pipeline(project_dir, events_path, db_path, cache_dir, schemas_dir, "run-001", _make_fake_client())
-
-    reports = list((project_dir / "reports").glob("status-*.md"))
-    assert len(reports) == 1
-    content = reports[0].read_text(encoding="utf-8")
-    assert "# Project Status Report" in content
-    assert "action_aging" in content or "blocker_unowned" in content
 
 
 @pytest.mark.integration

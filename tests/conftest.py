@@ -21,7 +21,6 @@ def project_dir(tmp_path: Path) -> Path:
         "raw/docs",
         "raw/backlog",
         "raw/meetings",
-        "reports",
     ]:
         (pdir / subdir).mkdir(parents=True)
 

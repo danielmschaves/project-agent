@@ -2,15 +2,11 @@ from __future__ import annotations
 
 import html as _html_lib
 import logging
-import re
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel
 
-from project_agent import events as _events_api
-from project_agent import projects
 from project_agent.schemas import Signal
 
 logger = logging.getLogger(__name__)
@@ -23,7 +19,7 @@ _SEVERITY_LABEL: dict[str, str] = {
     "low": "Low",
 }
 
-# Status → CSS modifier (project.md uses "amber"; pill class uses "status-yellow")
+# Status → CSS modifier (the index article uses "amber"; the pill class is "status-yellow")
 _STATUS_CSS: dict[str, str] = {
     "green": "status-green",
     "amber": "status-yellow",
@@ -38,7 +34,7 @@ _PILL_GLYPH: dict[str, str] = {
         ' stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
         "</svg>"
     ),
-    # project.md emits "amber"; CSS class is status-yellow — both keys map to warning glyph
+    # the index article emits "amber"; the CSS class is status-yellow — both map to the warning glyph
     "amber": (
         '<svg class="pill-glyph" viewBox="0 0 12 12" fill="none">'
         '<path d="M6 2v5M6 9.5v0.2" stroke="currentColor"'
@@ -118,78 +114,6 @@ class PortfolioProject(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def render_status(
-    project_dir: Path,
-    signals: list[Signal],
-    run_id: str,
-    output_dir: Path | None = None,
-    vault_dir: Path | None = None,
-) -> Path:
-    """Write a markdown status report and return its path.
-
-    Output is always regenerated from inputs — safe to call repeatedly.
-    Never touches project.notes.md (reads it as an excerpt only).
-    """
-    if output_dir is None:
-        output_dir = project_dir / "reports"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    project = projects.load_project(project_dir, vault_dir)
-    notes = projects.notes_body(project_dir)
-
-    date_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
-    report_path = output_dir / f"status-{date_str}.md"
-
-    report_path.write_text(
-        _build_md_report(project, signals, run_id, notes, date_str),
-        encoding="utf-8",
-    )
-    logger.info("Status report written: %s", report_path)
-    return report_path
-
-
-def render_html(
-    project_dir: Path,
-    signals: list[Signal],
-    run_id: str,
-    output_dir: Path | None = None,
-    design_system_dir: Path | None = None,
-    vault_dir: Path | None = None,
-) -> Path:
-    """Write an HTML status report and return its path.
-
-    CSS is loaded from design_system_dir (tokens.css + system.css + portfolio layout).
-    When design_system_dir is None, auto-detects design-system/ from repo root.
-    Never touches project.notes.md (reads it as an excerpt only).
-    """
-    if output_dir is None:
-        output_dir = project_dir / "reports"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    css = _load_design_css(_resolve_design_dir(design_system_dir))
-
-    project: dict[str, Any] = projects.load_project(project_dir, vault_dir)
-    notes = projects.notes_body(project_dir)
-
-    project_id = str(project.get("metadata", {}).get("id", "unknown"))
-    events_path = project_dir / "events.ndjson"
-    last_source_ts: datetime | None = None
-    if events_path.exists():
-        source_events = _events_api.query(
-            events_path, project_id=project_id, types=["source_ingested"]
-        )
-        last_source_ts = max((e.ts for e in source_events), default=None)
-
-    date_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
-    report_path = output_dir / f"status-{date_str}.html"
-    report_path.write_text(
-        _build_html_report(project, signals, run_id, notes, date_str, css, last_source_ts),
-        encoding="utf-8",
-    )
-    logger.info("HTML report written: %s", report_path)
-    return report_path
-
-
 def render_portfolio_html(
     project_summaries: list[PortfolioProject],
     output_dir: Path,
@@ -226,25 +150,16 @@ def _resolve_design_dir(design_system_dir: Path | None) -> Path:
 
 
 def _load_design_css(design_system_dir: Path) -> str:
-    """Load tokens.css + system.css + portfolio layout CSS from design_system_dir."""
+    """Concatenate the design system stylesheets, in cascade order."""
     parts: list[str] = []
-    for name in ("tokens.css", "system.css"):
-        p = design_system_dir / name
-        if not p.exists():
+    for name in ("tokens.css", "system.css", "portfolio.css"):
+        path = design_system_dir / name
+        if not path.exists():
             raise FileNotFoundError(
-                f"Design system file not found: {p}. "
+                f"Design system file not found: {path}. "
                 "Ensure design-system/ is present in the repo root."
             )
-        parts.append(p.read_text(encoding="utf-8"))
-    # Extract portfolio-specific layout styles from the reference HTML.
-    # These classes (.pd-crumb, .ig-wrap, .pd-attn, etc.) live only in
-    # Portfolio Dashboard.html — not in system.css — by design.
-    dashboard = design_system_dir / "Portfolio Dashboard.html"
-    if dashboard.exists():
-        html_text = dashboard.read_text(encoding="utf-8")
-        m = re.search(r"<style>(.*?)</style>", html_text, re.DOTALL)
-        if m:
-            parts.append(m.group(1))
+        parts.append(path.read_text(encoding="utf-8"))
     return "\n".join(parts)
 
 
@@ -278,14 +193,6 @@ def _esc(text: str) -> str:
     return _html_lib.escape(text, quote=True)
 
 
-def _status_pill_html(status: str) -> str:
-    key = status.lower()
-    css_mod = _STATUS_CSS.get(key, "")
-    cls = f"pill {css_mod}".strip() if css_mod else "pill"
-    glyph = _PILL_GLYPH.get(key, "")
-    return f'<span class="{cls}">{glyph}{_esc(status)}</span>'
-
-
 def _severity_badge_html(severity: str) -> str:
     label = _SEVERITY_LABEL.get(severity, severity.capitalize())
     return (
@@ -293,79 +200,6 @@ def _severity_badge_html(severity: str) -> str:
         f'<span class="sev-mark"></span>'
         f"{_esc(label)}"
         f"</span>"
-    )
-
-
-def _count_nonempty_lines(text: str) -> int:
-    return sum(1 for line in text.splitlines() if line.strip())
-
-
-def _method_tag_html(method: str) -> str:
-    if method == "llm":
-        return (
-            '<span style="margin-left:auto;font-size:10px;letter-spacing:0.08em;'
-            'color:var(--violet);font-weight:600;font-family:var(--font-mono)">LLM</span>'
-        )
-    return (
-        '<span style="margin-left:auto;font-size:10px;letter-spacing:0.08em;'
-        'color:var(--sky);font-weight:600;font-family:var(--font-mono)">DET</span>'
-    )
-
-
-def _signal_cards_html(signals: list[Signal]) -> str:
-    if not signals:
-        return '<p class="text-muted">No signals detected.</p>'
-    by_category: dict[str, list[Signal]] = {}
-    for s in signals:
-        by_category.setdefault(s.category, []).append(s)
-    parts: list[str] = []
-    for category in sorted(by_category):
-        cat_signals = by_category[category]
-        parts.append(
-            f'<p class="t-eyebrow" style="margin-bottom:var(--space-4)">'
-            f"{_esc(category.capitalize())} ({len(cat_signals)})"
-            f"</p>"
-        )
-        for s in cat_signals:
-            conf_html = (
-                f' &middot; <span title="confidence">{s.confidence:.0%}</span>'
-                if s.method == "llm"
-                else ""
-            )
-            parts.append(
-                f'<div class="signal-card">'
-                f'<div class="signal-head">'
-                f"{_severity_badge_html(s.severity)}"
-                f'<span class="signal-category">{_esc(s.category)}</span>'
-                f"{_method_tag_html(s.method)}"
-                f"</div>"
-                f'<h4 class="signal-title">{_esc(s.type)}</h4>'
-                f'<p class="signal-rationale">{_esc(s.rationale)}</p>'
-                f'<div class="signal-foot">'
-                f'<span class="signal-evidence">'
-                f"{len(s.evidence)} event(s){conf_html}"
-                f"</span>"
-                f'<span class="signal-action">{_esc(s.recommended_action)}</span>'
-                f"</div>"
-                f"</div>"
-            )
-    return "\n".join(parts)
-
-
-def _pm_notes_section_html(notes: str) -> str:
-    body = notes.strip()
-    if not body:
-        return ""
-    excerpt = _esc(body[:500])
-    suffix = "\n<em>(see project.notes.md for full notes)</em>" if len(body) > 500 else ""
-    return (
-        f'<section class="panel">'
-        f'<h2 class="t-section-title">PM Notes</h2>'
-        f'<div class="pullquote">'
-        f'<p class="t-pull">{excerpt}{suffix}</p>'
-        f'<span class="pullquote-attr">project.notes.md</span>'
-        f"</div>"
-        f"</section>"
     )
 
 
@@ -503,148 +337,9 @@ def _verdict_callout_html(top_signal: Signal | None) -> str:
     )
 
 
-def _parse_item_row(line: str) -> tuple[str, str, str]:
-    """Parse a checkbox action/blocker line. Returns (title, owner, due)."""
-    stripped = line.strip()
-    if not stripped:
-        return ("", "", "")
-    m = re.match(r"^-\s*\[[ xX?]\]\s*(.+)", stripped)
-    if m:
-        rest = m.group(1)
-        parts = [p.strip() for p in rest.split("|")]
-        title = parts[0]
-        owner = ""
-        due = ""
-        for part in parts[1:]:
-            low = part.lower()
-            if low.startswith("owner:"):
-                owner = part[6:].strip()
-            elif low.startswith("due:"):
-                due = part[4:].strip()
-        return (title, owner, due)
-    return (stripped, "", "")
-
-
-def _item_rows_html(text: str, empty_msg: str) -> str:
-    if not text.strip():
-        return f'<p class="text-muted">{empty_msg}</p>'
-    rows: list[str] = []
-    for line in text.splitlines():
-        title, owner, due = _parse_item_row(line)
-        if not title:
-            continue
-        meta_parts: list[str] = []
-        if owner:
-            meta_parts.append(f"owner: {_esc(owner)}")
-        if due:
-            meta_parts.append(f"due: {_esc(due)}")
-        meta_html = (
-            f' <span style="color:var(--text-muted);font-size:11px;font-family:var(--font-mono)">'
-            f'{" &middot; ".join(meta_parts)}'
-            f"</span>"
-            if meta_parts
-            else ""
-        )
-        rows.append(
-            f'<div style="display:flex;align-items:baseline;gap:var(--space-3);'
-            f'padding:var(--space-2) 0;border-bottom:1px solid var(--border);font-size:13px">'
-            f'<span style="color:var(--text-faint);flex-shrink:0">—</span>'
-            f'<span style="flex:1;color:var(--text-secondary)">{_esc(title)}{meta_html}</span>'
-            f"</div>"
-        )
-    return "\n".join(rows) if rows else f'<p class="text-muted">{empty_msg}</p>'
-
-
-def _actions_panel_html(actions_text: str) -> str:
-    return _item_rows_html(actions_text, "No open actions.")
-
-
-def _blockers_panel_html(blockers_text: str) -> str:
-    return _item_rows_html(blockers_text, "No open blockers.")
-
-
 # ---------------------------------------------------------------------------
 # Single-project page sub-helpers
 # ---------------------------------------------------------------------------
-
-
-def _project_header_html(
-    project_id: str,
-    status: str,
-    run_id: str,
-    n_signals: int,
-    n_high: int,
-    date_str: str,
-) -> str:
-    key = status.lower()
-    color = (
-        "var(--coral)"
-        if key == "red"
-        else "var(--amber)"
-        if key in ("amber", "yellow")
-        else "var(--sage)"
-    )
-    lead = _lead_paragraph(
-        n_signals, n_high, 1, 1 if key in ("red", "amber") else 0, "project"
-    )
-    return (
-        f'<header class="pd-head">'
-        f"<div>"
-        f'<p class="t-eyebrow">Project status</p>'
-        f'<h1 class="t-page-title">{_esc(project_id)} &mdash; '
-        f'<em style="color:{color}">{_esc(status)}.</em></h1>'
-        f'<p class="t-body" style="margin-top:var(--space-3)">{lead}</p>'
-        f"</div>"
-        f'<div class="head-meta">'
-        f'<span class="meta-row"><b>{_esc(date_str)}</b></span>'
-        f'<span class="meta-row">Run <b>{_esc(run_id)}</b></span>'
-        f"</div>"
-        f"</header>"
-    )
-
-
-def _project_fact_strip_html(
-    status: str,
-    signals: list[Signal],
-    actions_text: str,
-    blockers_text: str,
-    last_source_ts: datetime | None,
-    today: date,
-) -> str:
-    breakdown = _severity_breakdown(signals)
-    n_actions = _count_nonempty_lines(actions_text)
-    n_blockers = _count_nonempty_lines(blockers_text)
-    days = _silent_days(last_source_ts, today)
-    last_src_val = str(days) if days is not None else "—"
-    last_src_detail = "days ago" if days is not None else "no source data"
-
-    def card(label: str, value: str, detail: str = "") -> str:
-        detail_html = (
-            f'<span class="fact-detail">{_esc(detail)}</span>' if detail else ""
-        )
-        return (
-            f'<div class="fact-card">'
-            f'<span class="fact-label">{_esc(label)}</span>'
-            f'<span class="fact-value">{value}</span>'
-            f"{detail_html}"
-            f"</div>"
-        )
-
-    status_card = (
-        f'<div class="fact-card">'
-        f'<span class="fact-label">Status</span>'
-        f"{_status_pill_html(status)}"
-        f"</div>"
-    )
-    return (
-        f'<div class="pd-facts">'
-        + status_card
-        + card("Signals", str(len(signals)), breakdown or "none")
-        + card("Open actions", str(n_actions))
-        + card("Open blockers", str(n_blockers))
-        + card("Last source", last_src_val, last_src_detail)
-        + "</div>"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -976,58 +671,6 @@ def _portfolio_footer_html(date_str: str, run_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _build_html_report(
-    project: dict[str, Any],
-    signals: list[Signal],
-    run_id: str,
-    notes: str,
-    date_str: str,
-    css: str,
-    last_source_ts: datetime | None = None,
-) -> str:
-    meta: dict[str, Any] = project.get("metadata", {})
-    sections: dict[str, Any] = project.get("sections", {})
-    project_id = str(meta.get("id", "unknown"))
-    status = str(meta.get("status", "unknown"))
-    actions_text = str(sections.get("Actions", "")).strip()
-    blockers_text = str(sections.get("Blockers", "")).strip()
-    n_signals = len(signals)
-    n_high = sum(1 for s in signals if s.severity == "high")
-    today = datetime.now(tz=timezone.utc).date()
-    top_signal: Signal | None = (
-        max(signals, key=lambda s: _severity_weight(s.severity)) if signals else None
-    )
-
-    body = "\n".join([
-        '<div class="pd-shell">',
-        _breadcrumb_html(project_id),
-        _project_header_html(project_id, status, run_id, n_signals, n_high, date_str),
-        _project_fact_strip_html(
-            status, signals, actions_text, blockers_text, last_source_ts, today
-        ),
-        '<section class="panel">',
-        f'  <h2 class="t-section-title">Signals ({n_signals})</h2>',
-        f"  {_signal_cards_html(signals)}",
-        "</section>",
-        '<section class="panel">',
-        '  <h2 class="t-section-title">Actions</h2>',
-        f"  {_actions_panel_html(actions_text)}",
-        "</section>",
-        '<section class="panel">',
-        '  <h2 class="t-section-title">Blockers</h2>',
-        f"  {_blockers_panel_html(blockers_text)}",
-        "</section>",
-        _pm_notes_section_html(notes),
-        _verdict_callout_html(top_signal),
-        f'<footer class="pd-foot">'
-        f"<div>Project Agent &middot; {_esc(date_str)}</div>"
-        f"<div>Run <b>{_esc(run_id)}</b> &middot; Built offline</div>"
-        f"</footer>",
-        "</div>",
-    ])
-    return _html_shell(f"{project_id} — Status {date_str}", body, css)
-
-
 def _build_portfolio_html(
     project_summaries: list[PortfolioProject],
     date_str: str,
@@ -1084,58 +727,3 @@ def _build_portfolio_html(
 # ---------------------------------------------------------------------------
 
 
-def _build_md_report(
-    project: dict[str, Any],
-    signals: list[Signal],
-    run_id: str,
-    notes: str,
-    date_str: str,
-) -> str:
-    meta = project["metadata"]
-    sections = project.get("sections", {})
-    lines: list[str] = []
-
-    lines += [
-        "# Project Status Report",
-        "",
-        f"**Status:** {meta.get('status', 'unknown')}  ",
-        f"**Run:** {run_id}  ",
-        f"**Generated:** {date_str}",
-        "",
-    ]
-
-    if signals:
-        lines += [f"## Signals ({len(signals)})", ""]
-        by_category: dict[str, list[Signal]] = {}
-        for s in signals:
-            by_category.setdefault(s.category, []).append(s)
-        for category in sorted(by_category):
-            cat_signals = by_category[category]
-            lines += [f"### {category.capitalize()} ({len(cat_signals)})", ""]
-            for s in cat_signals:
-                icon = _SEVERITY_ICON.get(s.severity, "•")
-                lines.append(f"- {icon} **{s.type}** [{s.severity}]: {s.rationale}")
-                lines.append(f"  - *Recommended:* {s.recommended_action}")
-                lines.append(f"  - *Evidence:* {len(s.evidence)} event(s)")
-            lines.append("")
-    else:
-        lines += ["## Signals", "", "No signals detected.", ""]
-
-    lines += ["## Actions", ""]
-    actions_body = sections.get("Actions", "").strip()
-    lines.append(actions_body if actions_body else "No open actions.")
-    lines.append("")
-
-    lines += ["## Blockers", ""]
-    blockers_body = sections.get("Blockers", "").strip()
-    lines.append(blockers_body if blockers_body else "No open blockers.")
-    lines.append("")
-
-    notes_body = notes.strip()
-    if notes_body:
-        excerpt = notes_body[:500]
-        if len(notes_body) > 500:
-            excerpt += "\n\n*(see project.notes.md for full notes)*"
-        lines += ["## PM Notes", "", excerpt, ""]
-
-    return "\n".join(lines)

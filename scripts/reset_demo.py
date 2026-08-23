@@ -14,7 +14,6 @@ What this wipes:
   - projects/<id>/raw/emails/             → files moved back to _inbox/
   - projects/<id>/raw/docs/               → files moved back to _inbox/
   - projects/<id>/raw/backlog/            → files moved back to _inbox/
-  - projects/<id>/reports/                    → deleted
 
 Usage:
   uv run python scripts/reset_demo.py
@@ -68,9 +67,6 @@ def reset(project_id: str, keep_cache: bool, yes: bool) -> None:
             files = list(p.iterdir())
             if files:
                 print(f"  projects/{project_id}/raw/{folder}/  → {len(files)} file(s) moved to _inbox/")
-    reports_dir = project_dir / "reports"
-    if reports_dir.exists():
-        print(f"  projects/{project_id}/reports/              → delete")
     print()
 
     if not yes and not _confirm("Proceed with reset?"):
@@ -145,11 +141,6 @@ def reset(project_id: str, keep_cache: bool, yes: bool) -> None:
         if moved:
             print(f"  restored: {moved} file(s) from raw/{folder_name}/ → raw/_inbox/")
         folder.rmdir()
-
-    # --- reports ---
-    if reports_dir.exists():
-        shutil.rmtree(reports_dir)
-        print(f"  deleted: {reports_dir.relative_to(ROOT)}/")
 
     # --- compiled wiki ---
     # Without this the events are cleared but the articles they produced are
